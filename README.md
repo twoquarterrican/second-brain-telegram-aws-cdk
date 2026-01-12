@@ -162,6 +162,47 @@ webhook-setup
 telegram-webhook
 ```
 
+## CLI Commands
+
+The webhook script now supports both CLI arguments and interactive prompts:
+
+### Interactive Mode (Recommended)
+```bash
+# Launch interactive setup (default behavior)
+setup-webhook
+
+# Explicitly launch interactive mode
+setup-webhook interactive
+```
+
+### Traditional CLI Mode
+```bash
+# Set webhook with parameters
+setup-webhook set --token YOUR_TOKEN --auto-detect
+
+# Get current webhook info
+setup-webhook info --token YOUR_TOKEN
+
+# Test bot connection
+setup-webhook test --token YOUR_TOKEN
+
+# Delete webhook
+setup-webhook delete --token YOUR_TOKEN --force
+
+# Show help
+setup-webhook --help
+setup-webhook set --help
+```
+
+### CLI Options
+- `--token, -t`: Telegram bot token
+- `--webhook-url, -w`: Webhook URL
+- `--secret-token, -s`: Secret token for webhook verification
+- `--function-name, -f`: AWS Lambda function name (default: SecondBrainProcessor)
+- `--region, -r`: AWS region (default: us-east-1)
+- `--auto-detect, -a`: Auto-detect webhook URL from AWS
+- `--force, -f`: Skip confirmation (for delete command)
+
 The interactive script will guide you through:
 - **Auto-reading from env.json**: Detects if you have `TelegramBotToken` and `TelegramSecretToken` in your `env.json` file
 - Entering your bot token manually (if not in env.json)
@@ -316,7 +357,7 @@ second-brain-telegram-aws/
 uv sync
 
 # Run scripts in project context
-setup-webhook           # Interactive webhook setup
+setup-webhook           # Interactive webhook setup (default)
 webhook-setup           # Same as above
 telegram-webhook        # Same as above
 
