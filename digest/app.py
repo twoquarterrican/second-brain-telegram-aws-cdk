@@ -19,6 +19,64 @@ except ImportError:
 logger = logging.getLogger()
 logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
 
+
+def send_telegram_notification(message: str, chat_id: Optional[str] = None) -> bool:
+    """Send notification message to Telegram user"""
+    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not chat_id:
+        chat_id = os.getenv("USER_CHAT_ID")
+
+    if not chat_id or not TELEGRAM_BOT_TOKEN:
+        logger.warning("Cannot send notification: missing chat_id or bot token")
+        return False
+
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            logger.info("Notification sent to Telegram")
+            return True
+        else:
+            logger.error(f"Failed to send notification: {response.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"Error sending Telegram notification: {e}")
+        return False
+
+
+def validate_ai_tokens() -> bool:
+    """Check if AI tokens are configured"""
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+    if not ANTHROPIC_API_KEY and not OPENAI_API_KEY:
+        error_msg = (
+            "⚠️ *Digest Error*\n\n"
+            "No AI API keys found for digest generation.\n\n"
+            "Please set either:\n"
+            "• `ANTHROPIC_API_KEY` (Claude)\n"
+            "• `OPENAI_API_KEY` (OpenAI)\n\n"
+            "Check your SAM environment variables configuration."
+        )
+        send_telegram_notification(error_msg)
+        return False
+    return True
+
+
+try:
+    from anthropic import Anthropic
+except ImportError:
+    Anthropic = None
+
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
+
+logger = logging.getLogger()
+logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.getenv("DDB_TABLE_NAME"))
 
@@ -162,21 +220,7 @@ def create_basic_digest(open_items: List[Dict], recent_items: List[Dict]) -> str
     return digest
 
 
-def send_telegram_message(text: str, parse_mode: str = "Markdown") -> bool:
-    """Send message via Telegram bot API"""
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": USER_CHAT_ID, "text": text, "parse_mode": parse_mode}
-        response = requests.post(url, json=payload, timeout=10)
 
-        if response.status_code == 200:
-            logger.info("Digest sent successfully")
-            return True
-        else:
-            logger.error(
-                f"Failed to send digest: {response.status_code} - {response.text}"
-            )
-            return False
 
     except Exception as e:
         logger.error(f"Error sending Telegram message: {e}")
@@ -185,6 +229,10 @@ def send_telegram_message(text: str, parse_mode: str = "Markdown") -> bool:
 
 def lambda_handler(event, context):
     """Main Lambda handler for scheduled digest"""
+
+    # Validate AI tokens first
+    if not validate_ai_tokens():
+        return {"statusCode": 500, "body": "Configuration error"}
 
     logger.info("Starting digest generation")
 
@@ -220,13 +268,34 @@ def lambda_handler(event, context):
         full_message = header + digest_text
 
         # Send to Telegram
-        if send_telegram_message(full_message):
-            logger.info(f"{digest_type.title()} digest sent successfully")
-            return {"statusCode": 200, "body": f"{digest_type.title()} digest sent"}
-        else:
-            logger.error("Failed to send digest to Telegram")
-            return {"statusCode": 500, "body": "Failed to send digest"}
+        TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+        USER_CHAT_ID = os.getenv("USER_CHAT_ID")
+        
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": USER_CHAT_ID,
+                "text": full_message,
+                "parse_mode": "Markdown"
+            }
+            response = requests.post(url, json=payload, timeout=10)
+            if response.status_code == 200:
+                logger.info(f"{digest_type.title()} digest sent successfully")
+                return {"statusCode": 200, "body": f"{digest_type.title()} digest sent"}
+            else:
+                logger.error("Failed to send digest to Telegram")
+                return {"statusCode": 500, "body": "Failed to send digest"}
 
     except Exception as e:
         logger.error(f"Unexpected error in digest Lambda: {e}")
+        error_msg = (
+            f"⚠️ *Digest Error*\n\n"
+            f"Something went wrong generating your {digest_type} digest.\n\n"
+            f"📋 Details:\n"
+            f"Error: {str(e)}\n"
+            f"Time: {datetime.utcnow().isoformat()}\n\n"
+            f"🔍 Check CloudWatch logs for more details:\n"
+            f"AWS Console → Lambda → Functions → SecondBrainDigest → Monitor → Logs"
+        )
+        send_telegram_notification(error_msg)
         return {"statusCode": 500, "body": "Internal server error"}

@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import boto3
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
 try:
@@ -20,6 +20,73 @@ except ImportError:
 
 logger = logging.getLogger()
 logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+
+
+def send_telegram_notification(message: str, chat_id: Optional[str] = None) -> bool:
+    """Send notification message to Telegram user"""
+    if not chat_id:
+        chat_id = os.getenv("USER_CHAT_ID")
+    
+    if not chat_id or not TELEGRAM_BOT_TOKEN:
+        logger.warning("Cannot send notification: missing chat_id or bot token")
+        return False
+    
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            logger.info("Error notification sent to Telegram")
+            return True
+        else:
+            logger.error(f"Failed to send notification: {response.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"Error sending Telegram notification: {e}")
+        return False
+
+
+def validate_ai_tokens() -> bool:
+    """Check if AI tokens are configured"""
+    if not ANTHROPIC_API_KEY and not OPENAI_API_KEY:
+        error_msg = (
+            "⚠️ *Configuration Error*\n\n"
+            "No AI API keys found. Please set either:\n"
+            "• `ANTHROPIC_API_KEY` (Claude)\n"
+            "• `OPENAI_API_KEY` (OpenAI)\n\n"
+            "Check your SAM environment variables configuration.\n"
+            f"Function: {os.getenv('AWS_LAMBDA_FUNCTION_NAME', 'Unknown')}"
+        )
+        send_telegram_notification(error_msg)
+        return False
+    return True
+        else:
+            logger.error(f"Failed to send notification: {response.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"Error sending Telegram notification: {e}")
+        return False
+
+
+def validate_ai_tokens() -> bool:
+    """Check if AI tokens are configured"""
+    if not ANTHROPIC_API_KEY and not OPENAI_API_KEY:
+        error_msg = (
+            "⚠️ *Configuration Error*\n\n"
+            "No AI API keys found. Please set either:\n"
+            "• `ANTHROPIC_API_KEY` (Claude)\n"
+            "• `OPENAI_API_KEY` (OpenAI)\n\n"
+            "Check your SAM environment variables configuration.\n"
+            f"Function: {os.getenv('AWS_LAMBDA_FUNCTION_NAME', 'Unknown')}"
+        )
+        send_telegram_notification(error_msg)
+        return False
+    return True
+
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.getenv("DDB_TABLE_NAME"))
@@ -143,6 +210,10 @@ def store_brain_item(
         timestamp = datetime.utcnow().isoformat()
         uuid_str = timestamp.replace("-", "").replace(":", "").replace(".", "")
 
+        # Calculate TTL (expire after 2 years for completed items, 5 years for others)
+        ttl_years = 2 if classification.get("status") == "completed" else 5
+        expires_at = int((datetime.utcnow() + timedelta(days=ttl_years * 365)).timestamp())
+        
         item = {
             "PK": f"CATEGORY#{classification['category']}",
             "SK": f"{timestamp}#{uuid_str}",
@@ -156,6 +227,7 @@ def store_brain_item(
             "chat_id": chat_id,
             "created_at": timestamp,
             "updated_at": timestamp,
+            "expires_at": expires_at,
         }
 
         response = table.put_item(Item=item)
@@ -171,10 +243,14 @@ def store_brain_item(
 
 def lambda_handler(event, context):
     """Main Lambda handler for Telegram webhook"""
-
+    
+    # Validate AI tokens first
+    if not validate_ai_tokens():
+        return {"statusCode": 500, "body": "Configuration error"}
+    
     # Verify webhook signature
-    signature = event.get("headers", {}).get("x-telegram-bot-api-secret-token", "")
-    if not verify_webhook(event.get("body", "").encode(), signature):
+    signature = event.get('headers', {}).get('x-telegram-bot-api-secret-token', '')
+    if not verify_webhook(event.get('body', '').encode(), signature):
         logger.error("Webhook verification failed")
         return {"statusCode": 403, "body": "Forbidden"}
 
@@ -237,7 +313,19 @@ def lambda_handler(event, context):
 
     except json.JSONDecodeError:
         logger.error("Invalid JSON in request body")
+        send_telegram_notification("❌ *Error*: Invalid JSON format in request")
         return {"statusCode": 400, "body": "Invalid JSON"}
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
+        error_msg = (
+            f"❌ *Server Error*\n\n"
+            f"Something went wrong processing your message.\n\n"
+            f"📋 Details:\n"
+            f"Error: {str(e)}\n"
+            f"Function: {context.function_name if context else 'Unknown'}\n"
+            f"Time: {datetime.utcnow().isoformat()}\n\n"
+            f"🔍 Check CloudWatch logs for more details:\n"
+            f"AWS Console → Lambda → Functions → {context.function_name if context else 'Unknown'} → Monitor → Logs"
+        )
+        send_telegram_notification(error_msg)
         return {"statusCode": 500, "body": "Internal server error"}

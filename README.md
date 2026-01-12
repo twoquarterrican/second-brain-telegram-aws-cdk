@@ -32,6 +32,9 @@ Inspired by [Tiago Forte's Building a Second Brain](https://www.buildingasecondb
 - **AI Classification**: Automatically categorizes thoughts into People/Projects/Ideas/Admin
 - **Smart Extraction**: Extracts name, status, next actions, and notes with confidence scoring
 - **Automated Digests**: Daily (8AM UTC) and weekly (Sunday 9AM UTC) summaries
+- **Error Notifications**: Automatic Telegram alerts when Lambda encounters errors
+- **Configuration Validation**: Early warnings when AI tokens are missing
+- **TTL (Time To Live)**: Automatic cleanup of old data (2 years for completed, 5 years for others)
 - **Secure**: Webhook verification and secret token protection
 - **Serverless**: Pay-per-use AWS infrastructure (typically $0-5/month)
 
@@ -312,6 +315,18 @@ Solution: Verify API keys are valid, check network connectivity, try fallback AP
 Solution: Verify chat ID, check CloudWatch logs, ensure EventBridge rules are active
 ```
 
+**Configuration Error Messages**
+```
+⚠️ *Configuration Error* or ⚠️ *Digest Error*
+Solution: Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variables
+```
+
+**Server Error Messages**
+```
+❌ *Server Error* or ❌ *Digest Error*
+Solution: Check CloudWatch logs as directed in the Telegram error message
+```
+
 **DynamoDB Permission Errors**
 ```
 Solution: Check IAM policies, ensure Lambda has proper table access
@@ -319,10 +334,15 @@ Solution: Check IAM policies, ensure Lambda has proper table access
 
 ### Cost Estimation
 
-- **DynamoDB**: $0-2/month (pay-per-request)
+- **DynamoDB**: $0-2/month (pay-per-request with TTL cleanup)
 - **Lambda**: $0-1/month (1M free requests)
 - **API Calls**: $0-2/month (depends on usage)
 - **Total**: Typically $0-5/month for personal use
+
+#### TTL Configuration
+- **Completed items**: Auto-expire after 2 years
+- **Active items**: Auto-expire after 5 years
+- **Storage optimization**: Reduces long-term storage costs
 
 ### Monitoring
 
