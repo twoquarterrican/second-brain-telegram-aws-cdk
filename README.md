@@ -163,11 +163,25 @@ telegram-webhook
 ```
 
 The interactive script will guide you through:
-- Entering your bot token
+- **Auto-reading from env.json**: Detects if you have `TelegramBotToken` and `TelegramSecretToken` in your `env.json` file
+- Entering your bot token manually (if not in env.json)
 - Choosing to set, view, delete, or test the webhook
 - Auto-detecting your Lambda function URL from AWS
 - Generating a secure secret token for webhook verification
 - Confirming the configuration before applying changes
+
+#### env.json Support
+
+The script automatically reads from your `env.json` file:
+
+```json
+{
+  "TelegramBotToken": "123456789:ABC...",
+  "TelegramSecretToken": "your_secret_token"
+}
+```
+
+If these values are present, the script will ask if you want to use them, saving you from typing them manually!
 
 #### Manual Setup (Advanced)
 

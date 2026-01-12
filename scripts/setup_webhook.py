@@ -7,7 +7,7 @@ import os
 import sys
 import subprocess
 import json
-from typing import Optional
+from typing import Optional, Tuple, Any
 
 try:
     from InquirerPy import inquirer
@@ -18,8 +18,20 @@ except ImportError:
     sys.exit(1)
 
 
+def load_env_config() -> dict:
+    """Load configuration from env.json file"""
+    env_file = "env.json"
+    if os.path.exists(env_file):
+        try:
+            with open(env_file, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"⚠️  Warning: Could not read env.json: {e}")
+    return {}
+
+
 def get_function_url(function_name: str, region: str = "us-east-1") -> Optional[str]:
-    """Get the Function URL for a Lambda function using AWS CLI"""
+    """Get Function URL for a Lambda function using AWS CLI"""
     try:
         result = subprocess.run(
             [
@@ -46,8 +58,10 @@ def get_function_url(function_name: str, region: str = "us-east-1") -> Optional[
         return None
 
 
-def set_webhook(bot_token: str, webhook_url: str, secret_token: str = None) -> bool:
-    """Set the Telegram webhook"""
+def set_webhook(
+    bot_token: str, webhook_url: str, secret_token: Optional[str] = None
+) -> Tuple[bool, str]:
+    """Set Telegram webhook"""
     import requests
 
     url = f"https://api.telegram.org/bot{bot_token}/setWebhook"
@@ -69,7 +83,7 @@ def set_webhook(bot_token: str, webhook_url: str, secret_token: str = None) -> b
         return False, str(e)
 
 
-def get_webhook_info(bot_token: str) -> bool:
+def get_webhook_info(bot_token: str) -> Tuple[bool, Any]:
     """Get current webhook information"""
     import requests
 
@@ -88,8 +102,8 @@ def get_webhook_info(bot_token: str) -> bool:
         return False, str(e)
 
 
-def delete_webhook(bot_token: str) -> bool:
-    """Delete the Telegram webhook"""
+def delete_webhook(bot_token: str) -> Tuple[bool, str]:
+    """Delete Telegram webhook"""
     import requests
 
     url = f"https://api.telegram.org/bot{bot_token}/deleteWebhook"
@@ -107,19 +121,41 @@ def delete_webhook(bot_token: str) -> bool:
         return False, str(e)
 
 
+def get_bot_token_interactive() -> str:
+    """Get bot token from user input"""
+    return inquirer.text(
+        message="Enter your Telegram Bot Token:",
+        validate=lambda x: len(x) > 10 and ":" in x,
+        invalid_message="Please enter a valid Telegram bot token (should contain ':')",
+        transformer=lambda x: f"{x[:15]}..." if len(x) > 15 else x,
+    ).execute()
+
+
 def interactive_setup():
     """Interactive setup using InquirerPy"""
 
     print("🤖 Telegram Webhook Setup for Second Brain")
     print("=" * 50)
 
-    # Get bot token
-    bot_token = inquirer.text(
-        message="Enter your Telegram Bot Token:",
-        validate=lambda x: len(x) > 10 and x.isdigit(),
-        invalid_message="Please enter a valid Telegram bot token",
-        transformer=lambda x: f"{x[:15]}..." if len(x) > 15 else x,
-    ).execute()
+    # Load env.json configuration
+    env_config = load_env_config()
+
+    # Get bot token (try env.json first)
+    default_token = env_config.get("TelegramBotToken", "")
+
+    if default_token:
+        print(f"📋 Found bot token in env.json: {default_token[:15]}...")
+        use_env_token = inquirer.confirm(
+            message="Use bot token from env.json?", default=True
+        ).execute()
+
+        if use_env_token:
+            bot_token = default_token
+        else:
+            bot_token = get_bot_token_interactive()
+    else:
+        print("📋 No env.json found or no TelegramBotToken in env.json")
+        bot_token = get_bot_token_interactive()
 
     # Choose action
     action = inquirer.select(
@@ -149,7 +185,7 @@ def interactive_setup():
 
     elif action == "delete":
         confirm = inquirer.confirm(
-            message="Are you sure you want to delete the webhook?", default=False
+            message="Are you sure you want to delete webhook?", default=False
         ).execute()
 
         if confirm:
@@ -178,7 +214,7 @@ def interactive_setup():
 
     # Choose function source
     webhook_source = inquirer.select(
-        message="How do you want to get the webhook URL?",
+        message="How do you want to get webhook URL?",
         choices=[
             Choice("auto", "Auto-detect from AWS"),
             Choice("manual", "Enter manually"),
@@ -223,11 +259,28 @@ def interactive_setup():
             secret_token = secrets.token_urlsafe(32)
             print(f"🔑 Generated secret token: {secret_token}")
         else:
-            secret_token = inquirer.text(
-                message="Enter secret token:",
-                validate=lambda x: len(x) >= 8,
-                invalid_message="Secret token must be at least 8 characters",
-            ).execute()
+            # Try to read from env.json
+            env_secret = env_config.get("TelegramSecretToken", "")
+            if env_secret:
+                print(f"📋 Found secret token in env.json: {env_secret[:8]}...")
+                use_env_secret = inquirer.confirm(
+                    message="Use secret token from env.json?", default=True
+                ).execute()
+
+                if use_env_secret:
+                    secret_token = env_secret
+                else:
+                    secret_token = inquirer.text(
+                        message="Enter secret token:",
+                        validate=lambda x: len(x) >= 8,
+                        invalid_message="Secret token must be at least 8 characters",
+                    ).execute()
+            else:
+                secret_token = inquirer.text(
+                    message="Enter secret token:",
+                    validate=lambda x: len(x) >= 8,
+                    invalid_message="Secret token must be at least 8 characters",
+                ).execute()
 
     # Confirmation
     print(f"\n📋 Webhook Configuration Summary:")
