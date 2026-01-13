@@ -12,7 +12,7 @@ from typing import Optional
 def get_lambda_functions() -> list:
     """Get all Lambda functions in the Second Brain stack"""
     try:
-        cf_client = boto3.client("cloudformation")
+        cf_client = boto3.client("cloudformation", region_name="us-east-1")
         response = cf_client.describe_stacks(StackName="SecondBrainStack")
 
         functions = []
