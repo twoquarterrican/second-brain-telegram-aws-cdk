@@ -158,4 +158,4 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
-*~cdk.out
+cdk.out
