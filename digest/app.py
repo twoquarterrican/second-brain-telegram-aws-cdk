@@ -46,11 +46,15 @@ def send_telegram_notification(message: str, chat_id: Optional[str] = None) -> b
 
 
 def validate_ai_tokens() -> bool:
-    """Check if AI tokens are configured"""
+    """Check if AI tokens are configured (treat '-' as non-existent)"""
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-    if not ANTHROPIC_API_KEY and not OPENAI_API_KEY:
+    # Treat "-" as non-existent key
+    anthropic_valid = ANTHROPIC_API_KEY not in ["", "-", None]
+    openai_valid = OPENAI_API_KEY not in ["", "-", None]
+
+    if not anthropic_valid and not openai_valid:
         error_msg = (
             "⚠️ *Digest Error*\n\n"
             "No AI API keys found for digest generation.\n\n"
@@ -144,8 +148,9 @@ def generate_digest_with_ai(
 
     data_str = json.dumps(data, indent=2, default=str)
 
-    # Try Claude first
-    if ANTHROPIC_API_KEY and Anthropic:
+    # Try Claude first (treat "-" as non-existent)
+    anthropic_valid = ANTHROPIC_API_KEY not in ["", "-", None]
+    if anthropic_valid and Anthropic:
         try:
             client = Anthropic(api_key=ANTHROPIC_API_KEY)
             response = client.messages.create(
@@ -161,8 +166,9 @@ def generate_digest_with_ai(
         except Exception as e:
             logger.warning(f"Claude digest generation failed: {e}")
 
-    # Fallback to OpenAI
-    if OPENAI_API_KEY and OpenAI:
+    # Fallback to OpenAI (treat "-" as non-existent)
+    openai_valid = OPENAI_API_KEY not in ["", "-", None]
+    if openai_valid and OpenAI:
         try:
             client = OpenAI(api_key=OPENAI_API_KEY)
             response = client.chat.completions.create(

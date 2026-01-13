@@ -26,18 +26,14 @@ def send_telegram_notification(message: str, chat_id: Optional[str] = None) -> b
     """Send notification message to Telegram user"""
     if not chat_id:
         chat_id = os.getenv("USER_CHAT_ID")
-    
+
     if not chat_id or not TELEGRAM_BOT_TOKEN:
         logger.warning("Cannot send notification: missing chat_id or bot token")
         return False
-    
+
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": chat_id,
-            "text": message,
-            "parse_mode": "Markdown"
-        }
+        payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
             logger.info("Error notification sent to Telegram")
@@ -51,8 +47,12 @@ def send_telegram_notification(message: str, chat_id: Optional[str] = None) -> b
 
 
 def validate_ai_tokens() -> bool:
-    """Check if AI tokens are configured"""
-    if not ANTHROPIC_API_KEY and not OPENAI_API_KEY:
+    """Check if AI tokens are configured (treat '-' as non-existent)"""
+    # Treat "-" as non-existent
+    anthropic_valid = ANTHROPIC_API_KEY not in ["", "-", None]
+    openai_valid = OPENAI_API_KEY not in ["", "-", None]
+
+    if not anthropic_valid and not openai_valid:
         error_msg = (
             "⚠️ *Configuration Error*\n\n"
             "No AI API keys found. Please set either:\n"
@@ -64,15 +64,6 @@ def validate_ai_tokens() -> bool:
         send_telegram_notification(error_msg)
         return False
     return True
-        else:
-            logger.error(f"Failed to send notification: {response.status_code}")
-            return False
-    except Exception as e:
-        logger.error(f"Error sending Telegram notification: {e}")
-        return False
-
-
-def validate_ai_tokens() -> bool:
     """Check if AI tokens are configured"""
     if not ANTHROPIC_API_KEY and not OPENAI_API_KEY:
         error_msg = (
@@ -95,6 +86,10 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_SECRET_TOKEN = os.getenv("TELEGRAM_SECRET_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Treat "-" as non-existent
+ANTHROPIC_API_KEY = None if ANTHROPIC_API_KEY in ["", "-", None] else ANTHROPIC_API_KEY
+OPENAI_API_KEY = None if OPENAI_API_KEY in ["", "-", None] else OPENAI_API_KEY
 
 AI_CLASSIFICATION_PROMPT = """
 You are a classification AI for a personal second brain system. Analyze the following message and classify it into one of these categories:
@@ -136,8 +131,9 @@ def verify_webhook(request_body: bytes, signature: str) -> bool:
 def classify_with_ai(message: str) -> Optional[Dict[str, Any]]:
     """Classify message using AI (Claude first, fallback to OpenAI)"""
 
-    # Try Claude first
-    if ANTHROPIC_API_KEY and Anthropic:
+    # Try Claude first (treat "-" as non-existent)
+    anthropic_valid = ANTHROPIC_API_KEY not in ["", "-", None]
+    if anthropic_valid and Anthropic:
         try:
             client = Anthropic(api_key=ANTHROPIC_API_KEY)
             response = client.messages.create(
@@ -161,8 +157,9 @@ def classify_with_ai(message: str) -> Optional[Dict[str, Any]]:
         except Exception as e:
             logger.warning(f"Claude classification failed: {e}")
 
-    # Fallback to OpenAI
-    if OPENAI_API_KEY and OpenAI:
+    # Fallback to OpenAI (treat "-" as non-existent)
+    openai_valid = OPENAI_API_KEY not in ["", "-", None]
+    if openai_valid and OpenAI:
         try:
             client = OpenAI(api_key=OPENAI_API_KEY)
             response = client.chat.completions.create(
@@ -212,8 +209,10 @@ def store_brain_item(
 
         # Calculate TTL (expire after 2 years for completed items, 5 years for others)
         ttl_years = 2 if classification.get("status") == "completed" else 5
-        expires_at = int((datetime.utcnow() + timedelta(days=ttl_years * 365)).timestamp())
-        
+        expires_at = int(
+            (datetime.utcnow() + timedelta(days=ttl_years * 365)).timestamp()
+        )
+
         item = {
             "PK": f"CATEGORY#{classification['category']}",
             "SK": f"{timestamp}#{uuid_str}",
@@ -243,14 +242,14 @@ def store_brain_item(
 
 def lambda_handler(event, context):
     """Main Lambda handler for Telegram webhook"""
-    
+
     # Validate AI tokens first
     if not validate_ai_tokens():
         return {"statusCode": 500, "body": "Configuration error"}
-    
+
     # Verify webhook signature
-    signature = event.get('headers', {}).get('x-telegram-bot-api-secret-token', '')
-    if not verify_webhook(event.get('body', '').encode(), signature):
+    signature = event.get("headers", {}).get("x-telegram-bot-api-secret-token", "")
+    if not verify_webhook(event.get("body", "").encode(), signature):
         logger.error("Webhook verification failed")
         return {"statusCode": 403, "body": "Forbidden"}
 

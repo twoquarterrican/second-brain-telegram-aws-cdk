@@ -11,7 +11,7 @@ authors = [
 ]
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 keywords = ["telegram", "aws", "lambda", "second-brain", "ai", "productivity"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -39,12 +39,27 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    "aws-cdk-lib>=2.100.0",
+    "constructs>=10.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "aws-cdk-lib>=2.100.0",
+    "constructs>=10.0.0",
 ]
 
 [project.scripts]
 setup-webhook = "scripts.setup_webhook:main"
 webhook-setup = "scripts.setup_webhook:main"
 telegram-webhook = "scripts.setup_webhook:main"
+secrets = "scripts.secrets:main"
+cdk = "cdk_app.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -60,10 +75,10 @@ ignore = ["E501"]
 
 [tool.black]
 line-length = 88
-target-version = ["py312"]
+target-version = ["py311"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

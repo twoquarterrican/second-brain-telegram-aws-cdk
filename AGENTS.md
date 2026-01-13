@@ -37,6 +37,32 @@ mypy .
 black . && ruff check . --fix && mypy .
 ```
 
+### Secret Management Commands
+```bash
+# Store/sync all secrets from env.json to Parameter Store
+uv run scripts/secrets.py store
+
+# Store secrets (force overwrite existing)
+uv run scripts/secrets.py store --force
+
+# List stored secrets (values hidden)
+uv run scripts/secrets.py list
+
+# List secrets with values (decrypted)
+uv run scripts/secrets.py list --show-values
+
+# Update a specific secret from env.json
+uv run scripts/secrets.py update --parameter /second-brain/anthropic-api-key
+
+# Sync secrets (alias for store)
+uv run scripts/secrets.py sync
+
+# Or use the script name (registered in pyproject.toml)
+secrets store
+secrets list --show-values
+secrets update --parameter /second-brain/telegram-bot-token
+```
+
 ### Testing Commands
 ```bash
 # Run all tests
