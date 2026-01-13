@@ -7,12 +7,32 @@ import boto3
 import click
 from datetime import datetime, timedelta
 from typing import Optional
+import sys
+import os
+
+# Add parent directory to path for aws_helper
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from aws_helper import get_boto3_client
+
+    HAS_AWS_HELPER = True
+except ImportError:
+    HAS_AWS_HELPER = False
+
+# Import get_aws_session for region access
+try:
+    from aws_helper import get_aws_session
+except ImportError:
+    get_aws_session = None
 
 
 def get_lambda_functions() -> list:
-    """Get all Lambda functions in the Second Brain stack"""
+    """Get all Lambda functions in Second Brain stack"""
     try:
-        cf_client = boto3.client("cloudformation", region_name="us-east-1")
+        if HAS_AWS_HELPER:
+            cf_client = get_boto3_client("cloudformation")
+        else:
+            cf_client = boto3.client("cloudformation", region_name="us-east-1")
         response = cf_client.describe_stacks(StackName="SecondBrainStack")
 
         functions = []
@@ -155,7 +175,11 @@ def tail(lambda_name: Optional[str], follow: bool, hours: int):
         click.echo("📡 Following logs (Ctrl+C to stop)")
 
     # Initialize CloudWatch Logs client
-    logs_client = boto3.client("logs")
+    # Initialize CloudWatch Logs client
+    if HAS_AWS_HELPER:
+        logs_client = get_boto3_client("logs")
+    else:
+        logs_client = boto3.client("logs")
     log_group_name = get_log_group_name(lambda_name)
 
     # Get log streams

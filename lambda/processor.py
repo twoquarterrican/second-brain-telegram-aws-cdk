@@ -1,17 +1,31 @@
 import json
 import os
+import sys
 import logging
 import boto3
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import requests
 
+# Add parent directory to path for aws_helper
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from aws_helper import get_boto3_resource
+
+    HAS_AWS_HELPER = True
+except ImportError:
+    HAS_AWS_HELPER = False
+
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Initialize AWS clients
-dynamodb = boto3.resource("dynamodb")
+if HAS_AWS_HELPER:
+    dynamodb = get_boto3_resource("dynamodb")
+else:
+    dynamodb = boto3.resource("dynamodb")
+
 table_name = os.getenv("DDB_TABLE_NAME", "SecondBrain")
 table = dynamodb.Table(table_name)
 

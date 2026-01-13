@@ -40,6 +40,7 @@ scripts = [
 [project.scripts]
 setup-webhook = "scripts.setup_webhook:cli"
 tail-logs = "scripts.tail_logs:tail"
+setup-aws = "scripts.setup_aws:set_aws"
 
 [tool.setuptools.packages.find]
 where = ["."]
