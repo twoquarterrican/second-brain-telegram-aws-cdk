@@ -233,7 +233,7 @@ def cli(ctx: click.Context):
     default="ProcessorLambda",
     help="AWS Lambda function name",
 )
-@click.option("--region", "-r", default="us-east-1", help="AWS region")
+@click.option("--region", "-r", default="us-east-2", help="AWS region")
 @click.option(
     "--auto-detect",
     "-a",
@@ -465,6 +465,8 @@ def interactive_cmd():
             Choice("test", "Test bot connection"),
         ],
     ).execute()
+
+    # Action selected successfully
 
     if action == "set":
         # Use set command logic without arguments to trigger interactive mode
