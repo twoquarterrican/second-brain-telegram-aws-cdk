@@ -15,24 +15,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from aws_helper import get_boto3_client
 
-    HAS_AWS_HELPER = True
+    print("✅ Using aws_helper module")
 except ImportError:
-    HAS_AWS_HELPER = False
-
-# Import get_aws_session for region access
-try:
-    from aws_helper import get_aws_session
-except ImportError:
-    get_aws_session = None
+    print("⚠️  aws_helper not available, falling back to boto3")
+    import boto3
 
 
 def get_lambda_functions() -> list:
     """Get all Lambda functions in Second Brain stack"""
     try:
-        if HAS_AWS_HELPER:
-            cf_client = get_boto3_client("cloudformation")
-        else:
-            cf_client = boto3.client("cloudformation", region_name="us-east-1")
+        cf_client = get_boto3_client("cloudformation")
         response = cf_client.describe_stacks(StackName="SecondBrainStack")
 
         functions = []
@@ -44,7 +36,7 @@ def get_lambda_functions() -> list:
 
         return functions
     except Exception as e:
-        click.echo(f"❌ Error getting Lambda functions: {e}", err=True)
+        print(f"❌ Error getting Lambda functions: {e}")
         return []
 
 
@@ -65,7 +57,7 @@ def get_log_streams(logs_client, log_group_name: str, hours_back: int = 1):
             limit=10,
         )
 
-        # Filter streams that have events in the time window
+        # Filter streams that have events in time window
         streams = []
         for stream in response["logStreams"]:
             if "lastEventTimestamp" in stream:
@@ -74,7 +66,7 @@ def get_log_streams(logs_client, log_group_name: str, hours_back: int = 1):
 
         return streams[:5]  # Return latest 5 streams
     except Exception as e:
-        click.echo(f"⚠️  Error getting log streams: {e}", err=True)
+        print(f"⚠️  Error getting log streams: {e}")
         return []
 
 
@@ -139,7 +131,7 @@ def tail_logs(
                 click.echo("\n👋 Stopped following logs")
 
     except Exception as e:
-        click.echo(f"❌ Error tailing logs: {e}", err=True)
+        print(f"❌ Error tailing logs: {e}")
 
 
 @click.command()
@@ -170,25 +162,21 @@ def tail(lambda_name: Optional[str], follow: bool, hours: int):
             return
 
     click.echo(f"📊 Tailing logs for {lambda_name}...")
-    click.echo(f"⏰  Showing logs from last {hours} hour(s)")
+    click.echo(f"⏰  Showing logs from last {hours_back} hour(s)")
     if follow:
         click.echo("📡 Following logs (Ctrl+C to stop)")
 
     # Initialize CloudWatch Logs client
-    # Initialize CloudWatch Logs client
-    if HAS_AWS_HELPER:
-        logs_client = get_boto3_client("logs")
-    else:
-        logs_client = boto3.client("logs")
+    logs_client = get_boto3_client("logs")
     log_group_name = get_log_group_name(lambda_name)
 
     # Get log streams
-    log_streams = get_log_streams(logs_client, log_group_name, hours)
+    log_streams = get_log_streams(logs_client, log_group_name, hours_back)
 
     if not log_streams:
         click.echo(f"ℹ️  No recent log streams found for {lambda_name}")
         click.echo(
-            f"💡 Try running: uv run tail --lambda-name {lambda_name} --hours 24"
+            f"💡 Try running: uv run tail-logs --lambda-name {lambda_name} --hours 24"
         )
         return
 
@@ -196,7 +184,7 @@ def tail(lambda_name: Optional[str], follow: bool, hours: int):
     click.echo("─" * 60)
 
     # Tail logs
-    tail_logs(logs_client, log_group_name, log_streams, follow, hours)
+    tail_logs(logs_client, log_group_name, log_streams, follow, hours_back)
 
 
 if __name__ == "__main__":
