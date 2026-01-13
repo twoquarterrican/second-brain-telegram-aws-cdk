@@ -7,10 +7,9 @@ from aws_cdk import (
     aws_events_targets as targets,
     aws_iam as iam,
     CfnOutput,
-    RemovalPolicy
+    RemovalPolicy,
 )
 from constructs import Construct
-from typing import cast
 
 
 class SecondBrainStack(Stack):
@@ -28,7 +27,6 @@ class SecondBrainStack(Stack):
             sort_key=dynamodb.Attribute(name="SK", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
-            point_in_time_recovery=True,
         )
 
         # GSI for status queries
@@ -42,14 +40,6 @@ class SecondBrainStack(Stack):
             ),
             projection_type=dynamodb.ProjectionType.ALL,
         )
-
-# Lambda execution role - use default Lambda role
-        lambda_role = None
-            ],
-        )
-
-        # Grant DynamoDB permissions
-        table.grant_read_write_data(lambda_role)
 
         # Environment variables for Lambdas
         lambda_env = {
@@ -85,6 +75,10 @@ class SecondBrainStack(Stack):
             memory_size=512,
         )
 
+        # Grant DynamoDB permissions
+        table.grant_read_write_data(processor_lambda)
+        table.grant_read_write_data(digest_lambda)
+
         # EventBridge Rule for Daily Digest (8 AM UTC)
         daily_rule = events.Rule(
             self,
@@ -92,7 +86,7 @@ class SecondBrainStack(Stack):
             schedule=events.Schedule.cron(minute="0", hour="8"),
             description="Trigger daily digest at 8 AM UTC",
         )
-        daily_rule.add_target(cast(_lambda.IFunction, digest_lambda))
+        daily_rule.add_target(targets.LambdaFunction(digest_lambda))
 
         # EventBridge Rule for Weekly Digest (Sundays at 9 AM UTC)
         weekly_rule = events.Rule(
@@ -101,7 +95,7 @@ class SecondBrainStack(Stack):
             schedule=events.Schedule.cron(minute="0", hour="9", week_day="SUN"),
             description="Trigger weekly digest on Sundays at 9 AM UTC",
         )
-        weekly_rule.add_target(cast(_lambda.IFunction, digest_lambda))
+        weekly_rule.add_target(targets.LambdaFunction(digest_lambda))
 
         # Outputs
         CfnOutput(

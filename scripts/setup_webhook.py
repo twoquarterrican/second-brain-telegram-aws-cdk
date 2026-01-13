@@ -55,6 +55,45 @@ def get_function_url(function_name: str, region: str = "us-east-1") -> Optional[
         return None
 
 
+def get_function_url_from_cdk(
+    stack_name: str = "SecondBrainStack", region: str = "us-east-1"
+) -> Optional[str]:
+    """Get Function URL from CDK stack outputs using AWS CLI"""
+    try:
+        result = subprocess.run(
+            [
+                "aws",
+                "cloudformation",
+                "describe-stacks",
+                "--stack-name",
+                stack_name,
+                "--region",
+                region,
+                "--query",
+                "Stacks[0].Outputs[?OutputKey=='ProcessorFunctionUrl'].OutputValue",
+                "--output",
+                "text",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        # The output is already the URL string from the query
+        function_url = result.stdout.strip()
+        return function_url if function_url else None
+
+    except subprocess.CalledProcessError as e:
+        click.echo(f"❌ Error getting CDK stack outputs: {e.stderr}", err=True)
+        click.echo(
+            f"💡 Make sure you've deployed the CDK stack first: 'cdk deploy'", err=True
+        )
+        return None
+    except Exception as e:
+        click.echo(f"❌ Unexpected error: {e}", err=True)
+        return None
+
+
 def set_webhook(
     bot_token: str, webhook_url: str, secret_token: Optional[str] = None
 ) -> Tuple[bool, str]:
@@ -190,12 +229,15 @@ def cli(ctx: click.Context):
 @click.option(
     "--function-name",
     "-f",
-    default="SecondBrainProcessor",
+    default="ProcessorLambda",
     help="AWS Lambda function name",
 )
 @click.option("--region", "-r", default="us-east-1", help="AWS region")
 @click.option(
-    "--auto-detect", "-a", is_flag=True, help="Auto-detect webhook URL from AWS"
+    "--auto-detect",
+    "-a",
+    is_flag=True,
+    help="Auto-detect webhook URL from CDK stack outputs",
 )
 def set_cmd(
     token: Optional[str],
@@ -221,11 +263,15 @@ def set_cmd(
     # Get webhook URL
     if not webhook_url:
         if auto_detect:
-            click.echo("🔍 Auto-detecting webhook URL from AWS...")
-            webhook_url = get_function_url(function_name, region)
+            click.echo("🔍 Auto-detecting webhook URL from CDK stack...")
+            webhook_url = get_function_url_from_cdk("SecondBrainStack", region)
             if not webhook_url:
                 click.echo(
-                    "❌ Could not get function URL. Please check AWS CLI configuration and permissions.",
+                    "❌ Could not get function URL from CDK stack. Please check AWS CLI configuration and permissions.",
+                    err=True,
+                )
+                click.echo(
+                    "💡 Make sure you've deployed the CDK stack first: 'cdk deploy'",
                     err=True,
                 )
                 sys.exit(1)
@@ -233,12 +279,25 @@ def set_cmd(
             source = inquirer.select(
                 message="How do you want to get webhook URL?",
                 choices=[
-                    Choice("auto", "Auto-detect from AWS"),
+                    Choice("cdk", "Auto-detect from CDK stack outputs (recommended)"),
+                    Choice("lambda", "Direct Lambda function lookup"),
                     Choice("manual", "Enter manually"),
                 ],
             ).execute()
 
-            if source == "auto":
+            if source == "cdk":
+                webhook_url = get_function_url_from_cdk("SecondBrainStack", region)
+                if not webhook_url:
+                    click.echo(
+                        "❌ Could not get function URL from CDK stack. Please check AWS CLI configuration and permissions.",
+                        err=True,
+                    )
+                    click.echo(
+                        "💡 Make sure you've deployed the CDK stack first: 'cdk deploy'",
+                        err=True,
+                    )
+                    sys.exit(1)
+            elif source == "lambda":
                 function_name = inquirer.text(
                     message="Lambda function name:",
                     default=function_name,
@@ -409,7 +468,7 @@ def interactive_cmd():
     if action == "set":
         # Use set command logic without arguments to trigger interactive mode
         click.echo("🔧 Setting up webhook interactively...")
-        set_cmd(None, None, None, "SecondBrainProcessor", "us-east-1", False)
+        set_cmd(None, None, None, "ProcessorLambda", "us-east-1", False)
     elif action == "info":
         info_cmd(token)
     elif action == "delete":
