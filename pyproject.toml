@@ -32,9 +32,12 @@ scripts = [
     "InquirerPy>=0.3.0"
 ]
 
+[project.scripts]
+setup-webhook = "scripts.setup_webhook:cli"
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["second_brain*", "lambda*"]
+include = ["second_brain*", "lambda*", "scripts*"]
 
 [tool.black]
 line-length = 100

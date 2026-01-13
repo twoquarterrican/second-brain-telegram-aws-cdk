@@ -11,8 +11,9 @@ import json
 from typing import Optional, Tuple, Any
 
 import click
+
 from InquirerPy import inquirer
-from InquirerPy.base import Choice
+from InquirerPy.base.control import Choice
 
 
 def load_env_config() -> dict:
