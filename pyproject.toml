@@ -11,13 +11,16 @@ license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.8"
 
+# Production dependencies only (used by CDK Lambda functions)
 dependencies = [
     "aws-cdk-lib>=2.0.0",
     "constructs>=10.0.0", 
     "boto3>=1.26.0",
     "requests>=2.28.0",
     "anthropic>=0.3.0",
-    "openai>=0.27.0"
+    "openai>=0.27.0",
+    "click>=8.0.0",
+    "InquirerPy>=0.3.0"
 ]
 
 [project.optional-dependencies]
@@ -27,6 +30,8 @@ dev = [
     "flake8>=4.0.0",
     "mypy>=1.0.0"
 ]
+
+# Development and script dependencies
 scripts = [
     "click>=8.0.0",
     "InquirerPy>=0.3.0"
