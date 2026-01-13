@@ -469,7 +469,7 @@ def interactive_cmd():
     if action == "set":
         # Use set command logic without arguments to trigger interactive mode
         click.echo("🔧 Setting up webhook interactively...")
-        set_cmd(None, None, None, "ProcessorLambda", "us-east-1", False)
+        set_cmd(None, None, None, "ProcessorLambda", "us-east-1")
     elif action == "info":
         info_cmd(token)
     elif action == "delete":
