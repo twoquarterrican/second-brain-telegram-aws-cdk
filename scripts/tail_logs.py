@@ -7,18 +7,12 @@ import boto3
 import click
 from datetime import datetime, timedelta
 from typing import Optional
-import sys
-import os
 
-# Add parent directory to path for aws_helper
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-try:
-    from aws_helper import get_boto3_client
 
-    print("✅ Using aws_helper module")
-except ImportError:
-    print("⚠️  aws_helper not available, falling back to boto3")
-    import boto3
+# Simple boto3 client
+def get_boto3_client(service_name: str, **kwargs):
+    """Get boto3 client"""
+    return boto3.client(service_name, **kwargs)
 
 
 def get_lambda_functions() -> list:
@@ -36,7 +30,7 @@ def get_lambda_functions() -> list:
 
         return functions
     except Exception as e:
-        print(f"❌ Error getting Lambda functions: {e}")
+        click.echo(f"❌ Error getting Lambda functions: {e}", err=True)
         return []
 
 
@@ -66,7 +60,7 @@ def get_log_streams(logs_client, log_group_name: str, hours_back: int = 1):
 
         return streams[:5]  # Return latest 5 streams
     except Exception as e:
-        print(f"⚠️  Error getting log streams: {e}")
+        click.echo(f"⚠️  Error getting log streams: {e}", err=True)
         return []
 
 
@@ -97,7 +91,7 @@ def tail_logs(
 
         # Display events
         for event in events:
-            timestamp = event["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
+            timestamp = event["timestamp"]
             message = event["message"]
 
             click.echo(f"{timestamp} - {message}")
@@ -131,7 +125,7 @@ def tail_logs(
                 click.echo("\n👋 Stopped following logs")
 
     except Exception as e:
-        print(f"❌ Error tailing logs: {e}")
+        click.echo(f"❌ Error tailing logs: {e}", err=True)
 
 
 @click.command()

@@ -10,7 +10,7 @@ import requests
 # Add parent directory to path for aws_helper
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
-    from aws_helper import get_boto3_resource
+    from tools.aws_helper import get_boto3_resource
 
     HAS_AWS_HELPER = True
 except ImportError:
