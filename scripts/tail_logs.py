@@ -7,6 +7,8 @@ import boto3
 import click
 from datetime import datetime, timedelta
 from typing import Optional
+import sys
+import os
 
 
 # Simple boto3 client
@@ -40,7 +42,7 @@ def get_log_group_name(function_name: str) -> str:
 
 
 def get_log_streams(logs_client, log_group_name: str, hours_back: int = 1):
-    """Get log streams from the last N hours"""
+    """Get log streams from last N hours"""
     try:
         start_time = datetime.utcnow() - timedelta(hours=hours_back)
 
@@ -91,7 +93,7 @@ def tail_logs(
 
         # Display events
         for event in events:
-            timestamp = event["timestamp"]
+            timestamp = event["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
             message = event["message"]
 
             click.echo(f"{timestamp} - {message}")
@@ -125,7 +127,7 @@ def tail_logs(
                 click.echo("\n👋 Stopped following logs")
 
     except Exception as e:
-        click.echo(f"❌ Error tailing logs: {e}", err=True)
+        print(f"❌ Error tailing logs: {e}", err=True)
 
 
 @click.command()
