@@ -126,11 +126,17 @@ def classify_with_bedrock(message: str) -> Optional[Dict[str, Any]]:
             messages=[
                 {
                     "role": "user",
-                    "content": CLASSIFICATION_PROMPT.format(message=message),
+                    "content": [
+                        {
+                            "text": CLASSIFICATION_PROMPT.format(message=message),
+                        }
+                    ],
                 }
             ],
-            max_tokens=500,
-            temperature=0.1,
+            inferenceConfig={
+                "maxTokens": 500,
+                "temperature": 0.1,
+            },
         )
 
         # Extract content from Bedrock response
@@ -217,7 +223,10 @@ def process_message(message: str) -> Dict[str, Any]:
 
 def handler(event, _context):
     """Main Lambda handler for Telegram webhook."""
-    logger.info(f"Received event: {json.dumps(event)}")
+    import uuid
+
+    message_id = str(uuid.uuid4())[:8]  # Add unique ID for debugging
+    logger.info(f"[{message_id}] Received event: {json.dumps(event)}")
 
     # Verify webhook secret
     headers = event.get("headers", {})
@@ -242,9 +251,16 @@ def handler(event, _context):
         text = message.get("text", "")
         chat_id = str(message.get("chat", {}).get("id", ""))
 
+        # Extract unique message identifier to detect duplicates
+        message_unique_id = message.get("message_id", "")
+
         if not text:
             logger.warning("No text in message")
             return {"statusCode": 200, "body": "No text to process"}
+
+        logger.info(
+            f"[{message_id}] Processing message {message_unique_id}: {text[:50]}..."
+        )
 
         logger.info(f"Processing message from chat {chat_id}: {text[:100]}...")
 
