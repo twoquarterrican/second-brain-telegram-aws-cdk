@@ -117,27 +117,45 @@ def classify_with_bedrock(message: str) -> Optional[Dict[str, Any]]:
     try:
         import boto3
 
-        # Create Bedrock client
-        bedrock = boto3.client("bedrock-runtime")
+        # Create Bedrock client with region-specific config
+        bedrock_config = {
+            "region_name": BEDROCK_REGION,
+            "config": botocore.Config(read_timeout=60, retries={"max_attempts": 3}),
+        }
+        bedrock = boto3.client("bedrock-runtime", **bedrock_config)
 
-        # Use Anthropic Claude via Bedrock
-        response = bedrock.converse(
-            modelId="anthropic.claude-3-haiku-20240307-v1:0",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "text": CLASSIFICATION_PROMPT.format(message=message),
-                        }
-                    ],
-                }
-            ],
-            inferenceConfig={
-                "maxTokens": 500,
-                "temperature": 0.1,
-            },
-        )
+        # Use Anthropic Claude via Bedrock with provisioned throughput
+        try:
+            response = bedrock.converse(
+                modelId="anthropic.claude-3-haiku-20240307-v1:0",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": CLASSIFICATION_PROMPT.format(message=message),
+                    }
+                ],
+                max_tokens=500,
+                temperature=0.1,
+                additional_model_request_fields={
+                    "throughput_config": {"throughput_mode": "provisioned"}
+                },
+            )
+        except Exception as provisioned_error:
+            logger.warning(
+                f"Provisioned throughput failed, trying on-demand: {provisioned_error}"
+            )
+            # Fallback to on-demand
+            response = bedrock.converse(
+                modelId="anthropic.claude-3-haiku-20240307-v1:0",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": CLASSIFICATION_PROMPT.format(message=message),
+                    }
+                ],
+                max_tokens=500,
+                temperature=0.1,
+            )
 
         # Extract content from Bedrock response
         content = response["output"]["message"]["content"]
