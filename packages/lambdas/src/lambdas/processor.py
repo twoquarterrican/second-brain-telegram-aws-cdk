@@ -122,14 +122,14 @@ def classify_with_bedrock(message: str) -> Optional[Dict[str, Any]]:
 
         # Use Anthropic Claude via Bedrock
         response = bedrock.converse(
-            modelId="anthropic.claude-3-haiku-20240307-v1",
+            modelId="anthropic.claude-3-haiku-20240307-v1:0",
             messages=[
                 {
                     "role": "user",
                     "content": CLASSIFICATION_PROMPT.format(message=message),
                 }
             ],
-            maxTokens=500,
+            max_tokens=500,
             temperature=0.1,
         )
 
