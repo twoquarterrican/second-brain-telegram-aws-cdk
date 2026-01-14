@@ -8,6 +8,15 @@ resolution-markers = [
     "python_full_version < '3.8.1'",
 ]
 
+[manifest]
+members = [
+    "cdk",
+    "common",
+    "lambdas",
+    "scripts",
+    "second-brain",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -505,6 +514,25 @@ wheels = [
 ]
 
 [[package]]
+name = "cdk"
+version = "0.1.0"
+source = { editable = "packages/cdk" }
+dependencies = [
+    { name = "aws-cdk-lib", version = "2.183.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "aws-cdk-lib", version = "2.234.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "common" },
+    { name = "constructs", version = "10.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "constructs", version = "10.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aws-cdk-lib", specifier = ">=2.0.0" },
+    { name = "common", editable = "packages/common" },
+    { name = "constructs", specifier = ">=10.0.0" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -673,6 +701,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
 ]
+
+[[package]]
+name = "common"
+version = "0.1.0"
+source = { editable = "packages/common" }
 
 [[package]]
 name = "constructs"
@@ -1165,6 +1198,30 @@ wheels = [
 ]
 
 [[package]]
+name = "lambdas"
+version = "0.1.0"
+source = { editable = "packages/lambdas" }
+dependencies = [
+    { name = "anthropic", version = "0.72.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "anthropic", version = "0.75.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "boto3", version = "1.37.38", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "boto3", version = "1.42.26", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "common" },
+    { name = "openai" },
+    { name = "requests", version = "2.32.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "requests", version = "2.32.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", specifier = ">=0.8.0,<1.0.0" },
+    { name = "boto3", specifier = ">=1.26.0,<2.0.0" },
+    { name = "common", editable = "packages/common" },
+    { name = "openai", specifier = ">=0.27.0,<2.0.0" },
+    { name = "requests", specifier = ">=2.28.0" },
+]
+
+[[package]]
 name = "librt"
 version = "0.7.7"
 source = { registry = "https://pypi.org/simple" }
@@ -1377,48 +1434,25 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "2.2.0"
+version = "1.109.1"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.8.1' and python_full_version < '3.9'",
-    "python_full_version < '3.8.1'",
-]
 dependencies = [
     { name = "anyio", version = "4.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "distro", marker = "python_full_version < '3.9'" },
-    { name = "httpx", marker = "python_full_version < '3.9'" },
-    { name = "jiter", version = "0.9.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "pydantic", version = "2.10.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "sniffio", marker = "python_full_version < '3.9'" },
-    { name = "tqdm", marker = "python_full_version < '3.9'" },
-    { name = "typing-extensions", version = "4.13.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b8/b1/8201e321a7d64a25c6f5a560320272d8be70547add40311fceb916518632/openai-2.2.0.tar.gz", hash = "sha256:bc49d077a8bf0e370eec4d038bc05e232c20855a19df0b58e5b3e5a8da7d33e0", size = 588512, upload-time = "2025-10-06T18:08:13.665Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/92/6aeef1836e66dfec7f7f160a4f06d7041be7f6ccfc47a2f0f5738b332245/openai-2.2.0-py3-none-any.whl", hash = "sha256:d222e63436e33f3134a3d7ce490dc2d2f146fa98036eb65cc225df3ce163916f", size = 998972, upload-time = "2025-10-06T18:08:11.775Z" },
-]
-
-[[package]]
-name = "openai"
-version = "2.15.0"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.10'",
-    "python_full_version == '3.9.*'",
-]
-dependencies = [
     { name = "anyio", version = "4.12.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "distro", marker = "python_full_version >= '3.9'" },
-    { name = "httpx", marker = "python_full_version >= '3.9'" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "jiter", version = "0.9.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "jiter", version = "0.12.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "pydantic", version = "2.10.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "pydantic", version = "2.12.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "sniffio", marker = "python_full_version >= '3.9'" },
-    { name = "tqdm", marker = "python_full_version >= '3.9'" },
+    { name = "sniffio" },
+    { name = "tqdm" },
+    { name = "typing-extensions", version = "4.13.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/94/f4/4690ecb5d70023ce6bfcfeabfe717020f654bde59a775058ec6ac4692463/openai-2.15.0.tar.gz", hash = "sha256:42eb8cbb407d84770633f31bf727d4ffb4138711c670565a41663d9439174fba", size = 627383, upload-time = "2026-01-09T22:10:08.603Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/a1/a303104dc55fc546a3f6914c842d3da471c64eec92043aef8f652eb6c524/openai-1.109.1.tar.gz", hash = "sha256:d173ed8dbca665892a6db099b4a2dfac624f94d20a93f46eb0b56aae940ed869", size = 564133, upload-time = "2025-09-24T13:00:53.075Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/df/c306f7375d42bafb379934c2df4c2fa3964656c8c782bac75ee10c102818/openai-2.15.0-py3-none-any.whl", hash = "sha256:6ae23b932cd7230f7244e52954daa6602716d6b9bf235401a107af731baea6c3", size = 1067879, upload-time = "2026-01-09T22:10:06.446Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/2a/7dd3d207ec669cacc1f186fd856a0f61dbc255d24f6fdc1a6715d6051b0f/openai-1.109.1-py3-none-any.whl", hash = "sha256:6bcaf57086cf59159b8e27447e4e7dd019db5d29a438072fbd49c290c7e65315", size = 948627, upload-time = "2025-09-24T13:00:50.754Z" },
 ]
 
 [[package]]
@@ -2074,25 +2108,38 @@ wheels = [
 ]
 
 [[package]]
-name = "second-brain-telegram-aws"
+name = "scripts"
 version = "0.1.0"
-source = { editable = "." }
+source = { editable = "packages/scripts" }
 dependencies = [
-    { name = "anthropic", version = "0.72.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "anthropic", version = "0.75.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "aws-cdk-lib", version = "2.183.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "aws-cdk-lib", version = "2.234.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "boto3", version = "1.37.38", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "boto3", version = "1.42.26", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "click", version = "8.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "constructs", version = "10.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "constructs", version = "10.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "common" },
     { name = "inquirerpy" },
-    { name = "openai", version = "2.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "openai", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "requests", version = "2.32.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "requests", version = "2.32.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "boto3", specifier = ">=1.26.0" },
+    { name = "click", specifier = ">=8.0.0" },
+    { name = "common", editable = "packages/common" },
+    { name = "inquirerpy", specifier = ">=0.3.0" },
+    { name = "requests", specifier = ">=2.28.0" },
+]
+
+[[package]]
+name = "second-brain"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "cdk" },
+    { name = "common" },
+    { name = "lambdas" },
+    { name = "scripts" },
 ]
 
 [package.optional-dependencies]
@@ -2109,30 +2156,19 @@ dev = [
     { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
     { name = "pytest", version = "9.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
 ]
-scripts = [
-    { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "click", version = "8.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "inquirerpy" },
-]
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = ">=0.3.0" },
-    { name = "aws-cdk-lib", specifier = ">=2.0.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=22.0.0" },
-    { name = "boto3", specifier = ">=1.26.0" },
-    { name = "click", specifier = ">=8.0.0" },
-    { name = "click", marker = "extra == 'scripts'", specifier = ">=8.0.0" },
-    { name = "constructs", specifier = ">=10.0.0" },
+    { name = "cdk", editable = "packages/cdk" },
+    { name = "common", editable = "packages/common" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=4.0.0" },
-    { name = "inquirerpy", specifier = ">=0.3.0" },
-    { name = "inquirerpy", marker = "extra == 'scripts'", specifier = ">=0.3.0" },
+    { name = "lambdas", editable = "packages/lambdas" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
-    { name = "openai", specifier = ">=0.27.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
-    { name = "requests", specifier = ">=2.28.0" },
+    { name = "scripts", editable = "packages/scripts" },
 ]
-provides-extras = ["dev", "scripts"]
+provides-extras = ["dev"]
 
 [[package]]
 name = "six"

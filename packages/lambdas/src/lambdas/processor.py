@@ -7,24 +7,12 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import requests
 
-# Add parent directory to path for aws_helper
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-try:
-    from tools.aws_helper import get_boto3_resource
-
-    HAS_AWS_HELPER = True
-except ImportError:
-    HAS_AWS_HELPER = False
 
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize AWS clients
-if HAS_AWS_HELPER:
-    dynamodb = get_boto3_resource("dynamodb")
-else:
-    dynamodb = boto3.resource("dynamodb")
+dynamodb = boto3.resource("dynamodb")
 
 table_name = os.getenv("DDB_TABLE_NAME", "SecondBrain")
 table = dynamodb.Table(table_name)
@@ -32,6 +20,7 @@ table = dynamodb.Table(table_name)
 # Environment variables
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+BEDROCK_REGION = os.getenv("BEDROCK_REGION", "us-east-1")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_SECRET_TOKEN = os.getenv("TELEGRAM_SECRET_TOKEN")
 USER_CHAT_ID = os.getenv("USER_CHAT_ID")
@@ -56,13 +45,6 @@ Return ONLY a JSON object with this structure:
 }
 
 Message: {message}"""
-
-
-def verify_webhook_secret(request_body: bytes, secret_token: str) -> bool:
-    """Verify Telegram webhook secret token."""
-    # Telegram uses X-Telegram-Bot-Api-Secret-Token header
-    # For simplicity, we'll check if the secret matches
-    return secret_token == TELEGRAM_SECRET_TOKEN
 
 
 def classify_with_anthropic(message: str) -> Optional[Dict[str, Any]]:
@@ -122,6 +104,38 @@ def classify_with_openai(message: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def classify_with_bedrock(message: str) -> Optional[Dict[str, Any]]:
+    """Classify message using AWS Bedrock."""
+    try:
+        import boto3
+
+        # Create Bedrock client
+        bedrock = boto3.client("bedrock-runtime")
+
+        # Use Anthropic Claude via Bedrock
+        response = bedrock.converse(
+            modelId="anthropic.claude-3-haiku-20240307-v1",
+            messages=[
+                {
+                    "role": "user",
+                    "content": CLASSIFICATION_PROMPT.format(message=message),
+                }
+            ],
+            maxTokens=500,
+            temperature=0.1,
+        )
+
+        # Extract content from Bedrock response
+        content = response["output"]["message"]["content"]
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+
+        return json.loads(content)
+    except Exception as e:
+        logger.error(f"Bedrock classification failed: {e}")
+        return None
+
+
 def send_telegram_message(chat_id: str, text: str) -> bool:
     """Send message via Telegram bot API."""
     try:
@@ -165,13 +179,15 @@ def save_to_dynamodb(item_data: Dict[str, Any]) -> bool:
 
 def process_message(message: str) -> Dict[str, Any]:
     """Process and classify a message."""
-    # Try Anthropic first, fallback to OpenAI
+    # Try Anthropic first, then OpenAI, then Bedrock
     result = classify_with_anthropic(message)
     if not result and OPENAI_API_KEY:
         result = classify_with_openai(message)
+    if not result and BEDROCK_REGION:
+        result = classify_with_bedrock(message)
 
     if not result:
-        raise Exception("Both AI classification attempts failed")
+        raise Exception("All AI classification attempts failed")
 
     # Add original text to result
     result["original_text"] = message
@@ -181,7 +197,7 @@ def process_message(message: str) -> Dict[str, Any]:
     if not isinstance(confidence, int):
         try:
             confidence = int(float(confidence))
-        except:
+        except (ValueError, TypeError):
             confidence = 0
 
     result["confidence"] = min(100, max(0, confidence))
@@ -189,17 +205,19 @@ def process_message(message: str) -> Dict[str, Any]:
     return result
 
 
-def handler(event, context):
+def handler(event, _context):
     """Main Lambda handler for Telegram webhook."""
     logger.info(f"Received event: {json.dumps(event)}")
 
     # Verify webhook secret
     headers = event.get("headers", {})
-    if (
-        TELEGRAM_SECRET_TOKEN
-        and headers.get("x-telegram-bot-api-secret-token") != TELEGRAM_SECRET_TOKEN
-    ):
-        logger.warning("Invalid webhook secret")
+    received_secret = headers.get("x-telegram-bot-api-secret-token")
+    expected_secret = TELEGRAM_SECRET_TOKEN
+
+    if expected_secret and received_secret != expected_secret:
+        logger.error(f"❌ Invalid webhook secret")
+        logger.error(f"  Expected: {expected_secret}")
+        logger.error(f"  Received: {received_secret}")
         return {"statusCode": 403, "body": "Forbidden"}
 
     try:

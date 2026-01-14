@@ -16,18 +16,6 @@ from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 
 
-def load_env_config() -> dict:
-    """Load configuration from env.json file"""
-    env_file = "env.json"
-    if os.path.exists(env_file):
-        try:
-            with open(env_file, "r") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            click.echo(f"⚠️  Warning: Could not read env.json: {e}", err=True)
-    return {}
-
-
 def get_function_url(function_name: str, region: str = "us-east-1") -> Optional[str]:
     """Get Function URL for a Lambda function using AWS CLI"""
     try:

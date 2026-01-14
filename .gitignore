@@ -159,3 +159,4 @@ Thumbs.db
 *.tmp
 *.bak
 cdk.out
+/packages/cdk/layer/

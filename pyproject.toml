@@ -1,27 +1,46 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "second-brain-telegram-aws"
+name = "second-brain"
 version = "0.1.0"
 description = "A personal second brain system using Telegram and AWS"
 authors = [{name = "Second Brain Team"}]
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.8"
-
-# Production dependencies only (used by CDK Lambda functions)
 dependencies = [
-    "aws-cdk-lib>=2.0.0",
-    "constructs>=10.0.0", 
-    "boto3>=1.26.0",
-    "requests>=2.28.0",
-    "anthropic>=0.3.0",
-    "openai>=0.27.0",
-    "click>=8.0.0",
-    "InquirerPy>=0.3.0"
+    "cdk",
+    "common",
+    "lambdas",
+    "scripts",
 ]
+
+[project.scripts]
+deploy = "deploy:deploy_main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.workspace]
+members = [
+    "packages/cdk",
+    "packages/common",
+    "packages/lambdas",
+    "packages/scripts",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "packages/cdk/src/cdk",
+    "packages/common/src/common",
+    "packages/lambdas/src/lambdas",
+    "packages/scripts/src/scripts",
+]
+
+[tool.uv.sources]
+cdk = { workspace = true }
+common = { workspace = true }
+lambdas = { workspace = true }
+scripts = { workspace = true }
 
 [project.optional-dependencies]
 dev = [
@@ -30,21 +49,6 @@ dev = [
     "flake8>=4.0.0",
     "mypy>=1.0.0"
 ]
-
-# Development and script dependencies
-scripts = [
-    "click>=8.0.0",
-    "InquirerPy>=0.3.0"
-]
-
-[project.scripts]
-setup-webhook = "scripts.setup_webhook:cli"
-tail-logs = "scripts.tail_logs:tail"
-setup-aws = "scripts.setup_aws:set_aws"
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["second_brain*", "lambda*", "scripts*"]
 
 [tool.black]
 line-length = 100

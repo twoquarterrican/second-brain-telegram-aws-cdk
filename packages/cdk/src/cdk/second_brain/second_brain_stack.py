@@ -9,12 +9,17 @@ from aws_cdk import (
     CfnOutput,
     RemovalPolicy,
 )
+from pathlib import Path
 from constructs import Construct
+from cdk.build_layer import build_lambda_layer
+from common.environments import layer_dir, lambdas_src_dir, load_env_config
 
 
 class SecondBrainStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        code = _lambda.Code.from_asset(lambdas_src_dir().as_posix())
+        build_lambda_layer()
 
         # DynamoDB Table
         table = dynamodb.Table(
@@ -42,20 +47,40 @@ class SecondBrainStack(Stack):
         )
 
         # Environment variables for Lambdas
+        local_env = load_env_config()
         lambda_env = {
             "DDB_TABLE_NAME": table.table_name,
+            "ANTHROPIC_API_KEY": local_env.get("AnthropicApiKey", ""),
+            "OPENAI_API_KEY": local_env.get("OpenAIApiKey", ""),
+            "TELEGRAM_BOT_TOKEN": local_env.get("TelegramBotToken", ""),
+            "TELEGRAM_SECRET_TOKEN": local_env.get("TelegramSecretToken", ""),
+            "BEDROCK_REGION": local_env.get("BedrockRegion", ""),
+            "USER_CHAT_ID": local_env.get("UserChatId", ""),
         }
+
+        # Create Lambda layer with dependencies
+        layer_path = layer_dir()
+
+        dependencies_layer = _lambda.LayerVersion(
+            self,
+            "DependenciesLayer",
+            code=_lambda.Code.from_asset(str(layer_path)),
+            compatible_runtimes=[_lambda.Runtime.PYTHON_3_12],
+            description="Dependencies for Second Brain Lambda functions",
+            layer_version_name="second-brain-deps",
+        )
 
         # Processor Lambda
         processor_lambda = _lambda.Function(
             self,
             "ProcessorLambda",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="processor.handler",
-            code=_lambda.Code.from_asset("lambda"),
+            handler="lambdas.processor.handler",
+            code=code,
             environment=lambda_env,
             timeout=Duration.seconds(30),
             memory_size=256,
+            layers=[dependencies_layer],
         )
 
         # Enable Function URL for Processor
@@ -68,11 +93,12 @@ class SecondBrainStack(Stack):
             self,
             "DigestLambda",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="digest.handler",
-            code=_lambda.Code.from_asset("lambda"),
+            handler="lambdas.digest.handler",
+            code=code,
             environment=lambda_env,
             timeout=Duration.minutes(5),
             memory_size=512,
+            layers=[dependencies_layer],
         )
 
         # Grant DynamoDB permissions
@@ -106,4 +132,10 @@ class SecondBrainStack(Stack):
         )
         CfnOutput(
             self, "TableName", value=table.table_name, description="DynamoDB table name"
+        )
+        CfnOutput(
+            self,
+            "DependenciesLayerArn",
+            value=dependencies_layer.layer_version_arn,
+            description="ARN of the dependencies layer",
         )
