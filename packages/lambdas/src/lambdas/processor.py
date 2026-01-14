@@ -17,32 +17,40 @@ dynamodb = boto3.resource("dynamodb")
 table_name = os.getenv("DDB_TABLE_NAME", "SecondBrain")
 table = dynamodb.Table(table_name)
 
+
+def _get_env(key: str, default: str = "") -> str | None:
+    value = os.getenv(key, default).strip()
+    if value in ["", "-"] or value is None:
+        return None
+    return value
+
+
 # Environment variables
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-BEDROCK_REGION = os.getenv("BEDROCK_REGION", "us-east-1")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_SECRET_TOKEN = os.getenv("TELEGRAM_SECRET_TOKEN")
-USER_CHAT_ID = os.getenv("USER_CHAT_ID")
+ANTHROPIC_API_KEY = _get_env("ANTHROPIC_API_KEY")
+OPENAI_API_KEY = _get_env("OPENAI_API_KEY")
+BEDROCK_REGION = _get_env("BEDROCK_REGION", "us-east-1")
+TELEGRAM_BOT_TOKEN = _get_env("TELEGRAM_BOT_TOKEN")
+TELEGRAM_SECRET_TOKEN = _get_env("TELEGRAM_SECRET_TOKEN")
+USER_CHAT_ID = _get_env("USER_CHAT_ID")
 
 # AI Classification prompt
 CLASSIFICATION_PROMPT = """Classify the following message into one of these categories: People, Projects, Ideas, Admin.
 
-Extract the following fields if present:
+Extract following fields if present:
 - name: A short title/name for this item
 - status: Current status (e.g., "open", "in-progress", "completed", "waiting")
 - next_action: Next specific action to take
 - notes: Additional details or context
 
 Return ONLY a JSON object with this structure:
-{
+{{
     "category": "People|Projects|Ideas|Admin",
     "name": "string or null",
     "status": "string or null", 
     "next_action": "string or null",
     "notes": "string or null",
     "confidence": 0-100
-}
+}}
 
 Message: {message}"""
 
@@ -180,7 +188,9 @@ def save_to_dynamodb(item_data: Dict[str, Any]) -> bool:
 def process_message(message: str) -> Dict[str, Any]:
     """Process and classify a message."""
     # Try Anthropic first, then OpenAI, then Bedrock
-    result = classify_with_anthropic(message)
+    result = None
+    if ANTHROPIC_API_KEY:
+        result = classify_with_anthropic(message)
     if not result and OPENAI_API_KEY:
         result = classify_with_openai(message)
     if not result and BEDROCK_REGION:
