@@ -160,3 +160,5 @@ Thumbs.db
 *.bak
 cdk.out
 /packages/cdk/layer/
+*.local
+*.local.*
