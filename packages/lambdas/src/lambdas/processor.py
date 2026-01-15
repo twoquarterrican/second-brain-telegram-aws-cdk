@@ -62,9 +62,10 @@ def classify_with_anthropic(message: str) -> Optional[Dict[str, Any]]:
 
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
+        # noinspection PyTypeChecker
         response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=500,
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
             messages=[
                 {
                     "role": "user",
@@ -80,7 +81,7 @@ def classify_with_anthropic(message: str) -> Optional[Dict[str, Any]]:
 
         return json.loads(content)
     except Exception as e:
-        logger.error(f"Anthropic classification failed: {e}")
+        logger.error(f"Anthropic classification failed: {e}", exc_info=e)
         return None
 
 
@@ -91,6 +92,7 @@ def classify_with_openai(message: str) -> Optional[Dict[str, Any]]:
 
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
+        # noinspection PyTypeChecker
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -164,7 +166,7 @@ def classify_with_bedrock(message: str) -> Optional[Dict[str, Any]]:
 
         return json.loads(content)
     except Exception as e:
-        logger.error(f"Bedrock classification failed: {e}")
+        logger.error(f"Bedrock classification failed: {e}", exc_info=e)
         return None
 
 
@@ -268,6 +270,7 @@ def handler(event, _context):
         message = webhook_data.get("message", {})
         text = message.get("text", "")
         chat_id = str(message.get("chat", {}).get("id", ""))
+        snippet = text[:50]
 
         # Extract unique message identifier to detect duplicates
         message_unique_id = message.get("message_id", "")
@@ -277,10 +280,10 @@ def handler(event, _context):
             return {"statusCode": 200, "body": "No text to process"}
 
         logger.info(
-            f"[{message_id}] Processing message {message_unique_id}: {text[:50]}..."
+            f"[{message_id}] Processing message {message_unique_id}: {snippet}..."
         )
 
-        logger.info(f"Processing message from chat {chat_id}: {text[:100]}...")
+        logger.info(f"Processing message from chat {chat_id}: {snippet}...")
 
         # Process and classify message
         result = process_message(text)
@@ -302,7 +305,7 @@ def handler(event, _context):
             else:
                 send_telegram_message(chat_id, "❌ Failed to save your message")
         else:
-            reply = f"⚠️ Low confidence ({result['confidence']}%) - not saved. Please rephrase."
+            reply = f"⚠️ Low confidence ({result['confidence']}%) - not saved. Please rephrase `{snippet}`."
             send_telegram_message(chat_id, reply)
 
         return {"statusCode": 200, "body": "Message processed successfully"}

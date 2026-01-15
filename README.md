@@ -1,64 +1,54 @@
 # 🧠 Second Brain with Telegram & AWS
 
-A complete personal second brain system that captures thoughts via Telegram and processes them with AI, storing insights in DynamoDB with automated digest summaries.
+A personal second brain system that captures thoughts via Telegram and processes them with AI, storing insights in DynamoDB with automated digest summaries.
 
-Inspired by [Tiago Forte's Building a Second Brain](https://www.buildingasecondbrain.com/) and enhanced with 2026 AI capabilities. Watch [Why 2026 Is the Year to Build a Second Brain](https://youtu.be/0TpON5T-Sw4) by Nate B Jones.
+Inspired by [Tiago Forte's Building a Second Brain](https://www.buildingasecondbrain.com/).
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────┐    Webhook     ┌─────────────┐    AI API     ┌─────────────┐
-│  Telegram   │ ──────────────► │  AWS Lambda │ ───────────► │ Claude/OpenAI │
-│    Bot      │                │  Processor  │              │   (APIs)    │
+│  Telegram   │ ──────────────► │  AWS Lambda │ ───────────► │ Claude/GPT  │
+│    Bot      │                │  Processor  │   (Bedrock)  │   (APIs)    │
 └─────────────┘                └─────────────┘              └─────────────┘
                                         │
                                         ▼
                                ┌─────────────┐
-                               │  DynamoDB    │
-                               │  SecondBrain │
+                               │  DynamoDB   │
+                               │  SecondBrain│
                                └─────────────┘
                                         ▲
                                Scheduled │  EventBridge
                                         ▼
                                ┌─────────────┐
                                │  AWS Lambda │ ──► Telegram
-                               │   Digest     │      Chat
+                               │   Digest    │      Chat
                                └─────────────┘
 ```
 
 ## 🚀 Features
 
 - **Capture**: Send text messages to your personal Telegram bot
-- **AI Classification**: Automatically categorizes thoughts into People/Projects/Ideas/Admin
+- **AI Classification**: Automatically categorizes thoughts into People/Projects/Ideas/Admin using Anthropic Claude, OpenAI GPT, or AWS Bedrock
 - **Smart Extraction**: Extracts name, status, next actions, and notes with confidence scoring
 - **Automated Digests**: Daily (8AM UTC) and weekly (Sunday 9AM UTC) summaries
-- **Error Notifications**: Automatic Telegram alerts when Lambda encounters errors
-- **Configuration Validation**: Early warnings when AI tokens are missing
-- **TTL (Time To Live)**: Automatic cleanup of old data (2 years for completed, 5 years for others)
-- **Secure**: Webhook verification and secret token protection
-- **Serverless**: Pay-per-use AWS infrastructure (typically $0-5/month)
+- **Three-Tier AI Fallback**: Primary (Anthropic), Secondary (OpenAI), Tertiary (Bedrock)
+- **Serverless**: AWS CDK deployment with Lambda and DynamoDB
+- **Pay-per-use**: Typically $0-5/month
 
 ## 📋 Prerequisites
 
 - AWS account with appropriate permissions
 - GitHub account with GitHub CLI (`gh`) installed and authenticated
-- Python 3.13
+- Python 3.12+
 - **uv** (modern Python package manager) installed
-- **pyenv** for Python version management (optional)
-- AWS SAM CLI installed
+- AWS CDK CLI installed (`npm install -g aws-cdk`)
 - Telegram account
 
 ### Installing uv
 
 ```bash
-# Install uv (Linux/macOS/Windows WSL)
 curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Or using pip
-pip install uv
-
-# Verify installation
-uv --version
 ```
 
 ## 🛠️ Setup Instructions
@@ -66,20 +56,10 @@ uv --version
 ### 1. Clone and Setup Development Environment
 
 ```bash
-# Clone the repository
 git clone https://github.com/twoquarterrican/second-brain-telegram-aws.git
 cd second-brain-telegram-aws
 
-# Create and activate virtual environment with uv
 uv sync
-
-# Activate the virtual environment
-source .venv/bin/activate  # Linux/macOS
-# or
-.venv\Scripts\activate     # Windows
-
-# Install development dependencies (optional)
-uv sync --group dev
 ```
 
 ### 2. Create Telegram Bot
@@ -87,100 +67,80 @@ uv sync --group dev
 1. Open Telegram and search for `@BotFather`
 2. Send `/newbot` and follow instructions
 3. Save your bot token (looks like `123456789:ABC...`)
-4. Send `/setcommands` and configure commands:
-   ```
-   help - Get help information
-   ```
-5. Get your chat ID: Start a conversation with `@userinfobot`
+4. Get your chat ID: Start a conversation with `@userinfobot`
 
-### 2. Configure Environment Variables
+### 3. Configure Environment Variables
 
-Create a file `env.json` in the project root:
+Create `.env.local` in the project root:
 
-```json
-{
-  "AnthropicApiKey": "your_anthropic_api_key",
-  "OpenaiApiKey": "your_openai_api_key", 
-  "TelegramBotToken": "your_telegram_bot_token",
-  "TelegramSecretToken": "your_random_secret_token",
-  "UserChatId": "your_telegram_chat_id"
-}
+```bash
+# AWS Configuration
+AWS_PROFILE=yourprofile        # AWS profile name (optional)
+AWS_REGION=us-east-1           # AWS region
+
+# API Keys
+ANTHROPIC_API_KEY=your_anthropic_api_key
+OPENAI_API_KEY=your_openai_api_key
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_SECRET_TOKEN=your_random_secret_token
+USER_CHAT_ID=your_telegram_chat_id
+BEDROCK_REGION=us-east-1       # Optional, defaults to AWS_REGION
 ```
+
+**Note**: Python scripts automatically load `.env.local` via `common.environments`. Do not manually set `os.environ` in scripts.
 
 **API Keys**:
 - **Anthropic Claude**: Get from [console.anthropic.com](https://console.anthropic.com/)
 - **OpenAI**: Get from [platform.openai.com](https://platform.openai.com/)
-- **Telegram Secret Token**: Generate a random secret string for webhook verification
 
-### How to Generate Telegram Secret Token
-
-The `TelegramSecretToken` is a security measure to verify that webhook requests actually come from Telegram. Generate it using one of these methods:
-
-**Method 1: Using Python**
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-**Method 2: Using OpenSSL**
-```bash
-openssl rand -base64 32
-```
-
-**Method 3: Using uuidgen**
-```bash
-uuidgen | tr -d '-'
-```
-
-**Method 4: Online generator**
-- Visit [random.org](https://www.random.org/passwords/) and generate a 32-character random string
-
-**Example secret token**: `a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6`
-
-**Security Note**: Store these securely using AWS Secrets Manager in production. The secret token should be a unique random string that only your bot and Lambda function know.
-
-### 4. Deploy with SAM
+### 4. Deploy with CDK
 
 ```bash
-# Build the application (SAM will automatically use pyproject.toml dependencies)
-sam build
-
-# Deploy (follow prompts for parameters)
-sam deploy --guided
-
-# Save the configuration for future deployments
-sam deploy
+uv run deploy deploy
 ```
 
-**Note**: AWS SAM automatically reads dependencies from `pyproject.toml`. No separate requirements.txt file needed!
-
-### 4. Set Up Telegram Webhook
-
-The easiest way to set up your webhook is using the interactive script:
+Or using the CDK wrapper directly:
 
 ```bash
-# Launch interactive setup (recommended)
-setup-webhook
-
-# Alternative script names (all do the same thing)
-webhook-setup
-telegram-webhook
+uv run cdkw deploy
 ```
+
+### 5. Trigger Role for Scripts
+
+CDK creates a `SecondBrainTriggerRole` with `lambda:InvokeFunction` permissions on the stack's Lambdas. The role trusts the same account by default.
+
+For cross-account access, set your AWS account ID before deploying:
+
+```bash
+export TRIGGER_ROLE_TRUST_ACCOUNT=123456789012
+uv run deploy deploy
+```
+
+Give your IAM user permission to assume this role:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": "sts:AssumeRole",
+            "Resource": "arn:aws:iam::123456789012:role/SecondBrainTriggerRole"
+        }
+    ]
+}
+```
+
+**Note**: The role ARN is exported as `TriggerRoleArn` in CloudFormation outputs.
 
 ## CLI Commands
 
-The webhook script now supports both CLI arguments and interactive prompts:
+### Webhook Setup
 
-### Interactive Mode (Recommended)
 ```bash
-# Launch interactive setup (default behavior)
+# Interactive mode (recommended)
 setup-webhook
 
-# Explicitly launch interactive mode
-setup-webhook interactive
-```
-
-### Traditional CLI Mode
-```bash
 # Set webhook with parameters
 setup-webhook set --token YOUR_TOKEN --auto-detect
 
@@ -192,61 +152,32 @@ setup-webhook test --token YOUR_TOKEN
 
 # Delete webhook
 setup-webhook delete --token YOUR_TOKEN --force
-
-# Show help
-setup-webhook --help
-setup-webhook set --help
 ```
 
-### CLI Options
-- `--token, -t`: Telegram bot token
-- `--webhook-url, -w`: Webhook URL
-- `--secret-token, -s`: Secret token for webhook verification
-- `--function-name, -f`: AWS Lambda function name (default: SecondBrainProcessor)
-- `--region, -r`: AWS region (default: us-east-1)
-- `--auto-detect, -a`: Auto-detect webhook URL from AWS
-- `--force, -f`: Skip confirmation (for delete command)
-
-The interactive script will guide you through:
-- **Auto-reading from env.json**: Detects if you have `TelegramBotToken` and `TelegramSecretToken` in your `env.json` file
-- Entering your bot token manually (if not in env.json)
-- Choosing to set, view, delete, or test the webhook
-- Auto-detecting your Lambda function URL from AWS
-- Generating a secure secret token for webhook verification
-- Confirming the configuration before applying changes
-
-#### env.json Support
-
-The script automatically reads from your `env.json` file:
-
-```json
-{
-  "TelegramBotToken": "123456789:ABC...",
-  "TelegramSecretToken": "your_secret_token"
-}
-```
-
-If these values are present, the script will ask if you want to use them, saving you from typing them manually!
-
-#### Manual Setup (Advanced)
-
-If you prefer manual setup:
+### Tail Logs
 
 ```bash
-# Get the function URL
-aws lambda get-function-url-config --function-name SecondBrainProcessor
-
-# Set webhook manually
-curl -X POST "https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook" \
-     -H "Content-Type: application/json" \
-     -d '{"url": "YOUR_LAMBDA_URL", "secret_token": "YOUR_SECRET_TOKEN"}'
+tail-logs
 ```
 
-### 5. Test Your Bot
+### CDK Wrapper
 
-1. Send a test message to your bot: "Remember to call John about the project proposal tomorrow"
-2. You should receive a confirmation message with the classification
-3. Check DynamoDB table to see the stored item
+```bash
+# Run any CDK command
+uv run cdkw synth
+uv run cdkw diff
+uv run cdkw deploy
+uv run cdkw destroy
+```
+
+### Deploy Script (Builds Layer + CDK)
+
+```bash
+uv run deploy deploy
+uv run deploy synth
+uv run deploy diff
+uv run deploy destroy
+```
 
 ## 📱 Usage
 
@@ -266,12 +197,41 @@ Send natural language messages to your bot:
 - **Daily Digest**: Sent at 8AM UTC with recent items and open tasks
 - **Weekly Digest**: Sent Sundays at 9AM UTC with comprehensive summary
 
+### Trigger Digest Manually
+
+```bash
+# Interactive mode (prompts for missing values, auto-detects role)
+uv run trigger-digest
+
+# With flags
+uv run trigger-digest trigger --digest-type daily
+
+# With role assumption (recommended for limited permissions)
+uv run trigger-digest trigger --role-arn arn:aws:iam::123456789012:role/SecondBrainTriggerRole
+
+# Weekly digest
+uv run trigger-digest trigger --digest-type weekly
+
+# Force interactive mode
+uv run trigger-digest trigger --interactive
+```
+
+Options:
+- `-t, --digest-type`: `daily` or `weekly`
+- `-f, --function-name`: Lambda function name (auto-detected)
+- `--role-arn`: Role ARN to assume (auto-detected if `TriggerRoleArn` output exists)
+- `-i, --interactive`: Force interactive prompts
+
+Using `--role-arn` uses STS AssumeRole for temporary credentials with scoped permissions.
+
+Configure `AWS_REGION` and `AWS_PROFILE` in `.env.local` (see Environment Variables section).
+
 ### Categories
 
 The AI classifies messages into four categories:
 
 - **People**: Contacts, relationships, personal notes
-- **Projects**: Work initiatives, goals, deliverables  
+- **Projects**: Work initiatives, goals, deliverables
 - **Ideas**: Creative thoughts, concepts, brainstorming
 - **Admin**: Scheduling, logistics, maintenance tasks
 
@@ -279,19 +239,20 @@ The AI classifies messages into four categories:
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `ANTHROPIC_API_KEY` | Claude API key | ✅ |
-| `OPENAI_API_KEY` | OpenAI API key (fallback) | ✅ |
-| `TELEGRAM_BOT_TOKEN` | Bot token from BotFather | ✅ |
-| `TELEGRAM_SECRET_TOKEN` | Webhook verification secret | ✅ |
-| `USER_CHAT_ID` | Your Telegram chat ID for digests | ✅ |
-| `DDB_TABLE_NAME` | DynamoDB table name (auto-set) | ❌ |
-| `LOG_LEVEL` | Logging level (INFO/DEBUG) | ❌ |
+| Variable               | Description                        | Required |
+|------------------------|------------------------------------|----------|
+| `ANTHROPIC_API_KEY`    | Claude API key                     | ✅        |
+| `OPENAI_API_KEY`       | OpenAI API key (fallback)          | ✅        |
+| `TELEGRAM_BOT_TOKEN`   | Bot token from BotFather           | ✅        |
+| `TELEGRAM_SECRET_TOKEN`| Webhook verification secret        | ✅        |
+| `USER_CHAT_ID`         | Your Telegram chat ID for digests  | ✅        |
+| `DDB_TABLE_NAME`       | DynamoDB table name (auto-set)     | ❌        |
+| `BEDROCK_REGION`       | AWS region for Bedrock (optional)  | ❌        |
 
-### SAM Template Customization
+### CDK Stack Customization
 
-Edit `template.yaml` to modify:
+Edit `packages/cdk/src/cdk/second_brain/second_brain_stack.py` to modify:
+
 - Schedule times (daily/weekly digests)
 - Lambda memory allocation
 - AWS region
@@ -308,7 +269,7 @@ Solution: Check bot token, verify Lambda URL is accessible, ensure no trailing s
 
 **AI Classification Fails**
 ```
-Solution: Verify API keys are valid, check network connectivity, try fallback API
+Solution: Verify API keys are valid, check network connectivity, try different provider
 ```
 
 **No Digest Messages**
@@ -318,30 +279,8 @@ Solution: Verify chat ID, check CloudWatch logs, ensure EventBridge rules are ac
 
 **Python Version Issues**
 ```
-Solution: Ensure Python 3.13 is available and active
-
-# Using pyenv:
-python --version
-
-# Using uv with system Python:
-python3 --version  # Should show 3.13.x
-```
-
-**DynamoDB Permission Errors**
-```
-Solution: Check IAM policies, ensure Lambda has proper table access
-```
-
-**Configuration Error Messages**
-```
-⚠️ *Configuration Error* or ⚠️ *Digest Error*
-Solution: Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variables
-```
-
-**Server Error Messages**
-```
-❌ *Server Error* or ❌ *Digest Error*
-Solution: Check CloudWatch logs as directed in the Telegram error message
+Solution: Ensure Python 3.12 is available
+python3 --version  # Should show 3.12.x
 ```
 
 **DynamoDB Permission Errors**
@@ -351,23 +290,10 @@ Solution: Check IAM policies, ensure Lambda has proper table access
 
 ### Cost Estimation
 
-- **DynamoDB**: $0-2/month (pay-per-request with TTL cleanup)
+- **DynamoDB**: $0-2/month (pay-per-request)
 - **Lambda**: $0-1/month (1M free requests)
 - **API Calls**: $0-2/month (depends on usage)
 - **Total**: Typically $0-5/month for personal use
-
-#### TTL Configuration
-- **Completed items**: Auto-expire after 2 years
-- **Active items**: Auto-expire after 5 years
-- **Storage optimization**: Reduces long-term storage costs
-
-### Monitoring
-
-Monitor via AWS CloudWatch:
-- Lambda execution logs
-- Error rates and timeouts
-- DynamoDB consumption
-- API call metrics
 
 ## 🛠️ Development
 
@@ -375,16 +301,27 @@ Monitor via AWS CloudWatch:
 
 ```
 second-brain-telegram-aws/
-├── pyproject.toml           # Project metadata and dependencies
-├── .venv/                   # Virtual environment (created by uv)
-├── template.yaml            # AWS SAM template
-├── processor/
-│   └── app.py              # Telegram webhook processor
-├── digest/
-│   └── app.py              # Scheduled digest generator
-├── scripts/
-│   └── setup_webhook.py    # Webhook setup utility
-└── README.md
+├── pyproject.toml              # Workspace configuration
+├── README.md
+├── .env.local                  # Environment variables (gitignored)
+├── packages/
+│   ├── cdk/                   # AWS CDK infrastructure
+│   │   └── src/cdk/
+│   │       ├── app.py         # CDK entry point
+│   │       └── second_brain/
+│   │           └── second_brain_stack.py
+│   ├── common/                # Shared utilities
+│   │   └── src/common/
+│   │       └── environments.py
+│   ├── lambdas/               # Lambda functions
+│   │   └── src/lambdas/
+│   │       ├── processor.py   # Telegram webhook handler
+│   │       └── digest.py      # Scheduled digest generator
+│   └── scripts/               # CLI tools
+│       └── src/scripts/
+│           ├── setup_webhook.py
+│           ├── cdkw.py
+│           └── tail_logs.py
 ```
 
 ### Development Commands
@@ -393,90 +330,31 @@ second-brain-telegram-aws/
 # Install/update dependencies
 uv sync
 
-# Create and activate virtual environment with uv
-source .venv/bin/activate  # Linux/macOS
-# or
-.venv\Scripts\activate     # Windows
+# Run tests (if configured)
+uv run pytest
 
-# Install development dependencies (optional)
-uv sync --group dev
+# Format code
+uv run black .
+
+# Type checking
+uv run mypy .
 ```
 
-### Using pyenv (Optional - for Python version management)
+### Build System
 
-If you prefer **pyenv** over uv for Python management:
+This project uses **uv workspace** with **hatchling** for building:
 
-```bash
-# Install pyenv (if not already installed)
-curl https://pyenv.run | bash
-
-# Add pyenv to shell
-echo 'export PATH="$HOME/.pyenv/bin:$PATH"' >> ~/.bashrc
-echo 'eval "$(pyenv init -)"' >> ~/.bashrc
-
-# Set Python version
-export PATH="$HOME/.pyenv/bin:$PATH" && eval "$(pyenv init -)" && pyenv install 3.13.0
-pyenv global 3.13.0
-
-# Verify installation
-python --version
-```
-
-### Dependency Management
-
-This project uses **uv** for modern Python dependency management:
-
-- `pyproject.toml` contains all dependencies and project metadata
-- `uv sync` creates a virtual environment and installs all dependencies
-- Development tools are in `[project.optional-dependencies.dev]`
-- No separate `requirements.txt` needed - SAM reads from `pyproject.toml`
-
-## 🔄 Git Repository Setup
-
-```bash
-# Initialize git repository
-git init
-git add .
-git commit -m "Initial second brain SAM project"
-
-# Create GitHub repository
-gh repo create second-brain-telegram-aws --public --push --source=.
-
-# Or for private repository
-gh repo create second-brain-telegram-aws --private --push --source=.
-```
-
-## 🚀 Extensions & Ideas
-
-### Voice Transcription
-Add support for voice notes using AWS Transcribe:
-
-```python
-# Add to processor/app.py
-def transcribe_voice(file_id: str) -> str:
-    # Download voice file from Telegram
-    # Send to AWS Transcribe
-    # Return transcribed text
-```
-
-### AWS Bedrock Integration
-Replace external AI APIs with AWS Bedrock for better security and cost.
-
-### Enhanced Categories
-Add custom categories or let users define their own classification system.
-
-### Web Dashboard
-Create a simple web interface to browse and manage your second brain.
-
-### Calendar Integration
-Automatically create calendar events from items with dates/times.
+- `pyproject.toml` defines workspace members
+- Each package has its own `pyproject.toml` with dependencies
+- CDK builds Lambda layer using Docker and uv
 
 ## 📚 Resources
 
-- [AWS SAM Documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/)
+- [AWS CDK Documentation](https://docs.aws.amazon.com/cdk/latest/guide/)
 - [Telegram Bot API](https://core.telegram.org/bots/api)
 - [Anthropic Claude API](https://docs.anthropic.com/claude/reference/)
 - [OpenAI API Documentation](https://platform.openai.com/docs/api-reference)
+- [AWS Bedrock Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/)
 - [Building a Second Brain](https://www.buildingasecondbrain.com/)
 
 ## 📄 License

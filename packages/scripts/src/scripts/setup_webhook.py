@@ -14,6 +14,7 @@ import click
 
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
+import common.environments
 
 
 def get_function_url(function_name: str, region: str = "us-east-1") -> Optional[str]:
@@ -156,21 +157,13 @@ def get_bot_token_interactive() -> str:
     ).execute()
 
 
-def get_bot_token(env_config: dict) -> str:
+def get_bot_token() -> str:
     """Get bot token from env.json or interactive input"""
-    default_token = env_config.get("TelegramBotToken", "")
+    telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not telegram_bot_token:
+        raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set")
 
-    if default_token:
-        click.echo(f"📋 Found bot token in env.json: {default_token[:15]}...")
-        use_env_token = inquirer.confirm(
-            message="Use bot token from env.json?", default=True
-        ).execute()
-
-        if use_env_token:
-            return default_token
-
-    click.echo("📋 Getting bot token from user input...")
-    return get_bot_token_interactive()
+    return telegram_bot_token
 
 
 def get_secret_token_interactive(env_config: dict) -> Optional[str]:
@@ -239,9 +232,6 @@ def set_cmd(
     """Set up Telegram webhook."""
 
     click.echo("🔧 Setting up Telegram webhook...")
-
-    # Load env.json config
-    env_config = load_env_config()
 
     # Get bot token
     if not token:
@@ -386,8 +376,7 @@ def delete_cmd(token: Optional[str], force: bool):
     """Delete Telegram webhook."""
 
     if not token:
-        env_config = load_env_config()
-        token = get_bot_token(env_config)
+        token = get_bot_token()
     else:
         click.echo(f"📋 Using provided bot token: {token[:15]}...")
 
@@ -436,9 +425,6 @@ def interactive_cmd():
 
     click.echo("🤖 Telegram Webhook Setup for Second Brain")
     click.echo("=" * 50)
-
-    # Load env.json config
-    env_config = load_env_config()
 
     # Get bot token
     token = get_bot_token(env_config)

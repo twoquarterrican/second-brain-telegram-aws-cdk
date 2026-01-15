@@ -7,10 +7,13 @@ Reads configuration from env.json and provides boto3 session helpers
 import os
 import json
 import boto3
+from typing import Optional
 from functools import cache
 from pathlib import Path
+from dotenv import load_dotenv
 
-ENV_JSON_PATH: Path = Path(__file__).parents[1] / "env.json"
+
+load_dotenv(dotenv_path=(Path(__file__).parents[1] / "env.local"))
 
 
 @cache
@@ -82,28 +85,14 @@ def layer_dir() -> Path:
 
 
 @cache
-def load_env_config():
-    """Load configuration from env.json"""
-    try:
-        with open(ENV_JSON_PATH, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        raise ValueError(
-            f"Missing {ENV_JSON_PATH.as_posix()}. This file is required for AWS operations. See README for more info."
-        )
-
-
-@cache
 def get_aws_session() -> boto3.Session:
     """Get AWS session with preferred configuration"""
-    # Load from env.json
-    env_config = load_env_config()
 
     # Get profile from env.json, then environment, then default
-    profile = env_config.get("AWS_PROFILE", os.getenv("AWS_PROFILE"))
+    profile = os.getenv("AWS_PROFILE")
 
     # Get region from env.json, then environment, then default
-    region = env_config.get("AWS_REGION", os.getenv("AWS_REGION"))
+    region = os.getenv("AWS_REGION")
 
     return boto3.session.Session(profile_name=profile, region_name=region)
 
@@ -122,26 +111,110 @@ def get_boto3_resource(service_name: str, **kwargs):
     return session.resource(service_name, **kwargs)
 
 
-def print_aws_config():
-    """Print current AWS configuration"""
-    env_config = load_env_config()
-    profile = env_config.get("AWS_PROFILE", os.getenv("AWS_PROFILE", "default"))
-    region = env_config.get("AWS_REGION", os.getenv("AWS_REGION", "us-east-1"))
+@cache
+def get_lambda_client(region: Optional[str] = None):
+    """Get AWS Lambda client with configured session."""
+    session = get_aws_session()
+    region = region or os.getenv("AWS_REGION", "us-east-1")
+    return session.client("lambda", region_name=region)
 
-    print("🔧 AWS Configuration:")
-    print(f"  Profile: {profile}")
-    print(f"  Region: {region}")
 
-    # Show env.json status
-    if env_config:
-        print("  Config: ✅ Loaded from env.json")
-    else:
-        print("  Config: ⚠️  No env.json found (using defaults)")
+@cache
+def get_cfn_client(region: str):
+    """Get CloudFormation client."""
+    session = get_aws_session()
+    return session.client("cloudformation", region_name=region)
 
-    print("\n💡 Usage in Python:")
-    print("  from aws_helper import get_boto3_client")
-    print("  client = get_boto3_client('lambda')")
-    print(f"  # Uses profile: {profile}, region: {region}")
+
+@cache
+def get_sts_client(region: str = "us-east-1"):
+    """Get STS client."""
+    session = get_aws_session()
+    return session.client("sts", region_name=region)
+
+
+def get_stack_output(stack_name: str, output_key: str) -> Optional[str]:
+    """Get a specific output from CloudFormation stack."""
+    region = os.getenv("AWS_REGION", "us-east-1")
+    cfn = get_cfn_client(region)
+    response = cfn.describe_stacks(StackName=stack_name)
+    stacks = response.get("Stacks", [])
+    if not stacks:
+        return None
+
+    outputs = stacks[0].get("Outputs", [])
+    for output in outputs:
+        if output.get("OutputKey") == output_key:
+            return output.get("OutputValue")
+    return None
+
+
+def get_function_name() -> Optional[str]:
+    """Get the digest Lambda function name from CDK stack outputs."""
+    return get_stack_output("SecondBrainStack", "DigestLambdaFunctionName")
+
+
+def get_trigger_role_arn(region: str) -> Optional[str]:
+    """Get the trigger role ARN from CDK stack outputs."""
+    return get_stack_output("SecondBrainStack", "TriggerRoleArn")
+
+
+def list_stack_resources(stack_name: str):
+    """Generator that yields all resources in a CloudFormation stack.
+
+    Uses paginator to handle stacks with more than 100 resources.
+    Yields dicts with 'LogicalResourceId', 'ResourceType', and 'PhysicalResourceId'.
+    """
+    region = os.getenv("AWS_REGION", "us-east-1")
+    cfn = get_cfn_client(region)
+
+    paginator = cfn.get_paginator("list_stack_resources")
+    page_iterator = paginator.paginate(StackName=stack_name)
+
+    for page in page_iterator:
+        for resource in page.get("StackResourceSummaries", []):
+            yield resource
+
+
+def find_lambda_function(logical_id_prefix: str) -> Optional[str]:
+    """Find a Lambda function in the stack by logical resource ID prefix.
+
+    Args:
+        logical_id_prefix: Prefix to match (e.g., 'DigestLambda')
+
+    Returns:
+        Physical resource ID (function name) or None if not found
+    """
+    for resource in list_stack_resources("SecondBrainStack"):
+        logical_id = resource.get("LogicalResourceId", "")
+        resource_type = resource.get("ResourceType", "")
+        physical_id = resource.get("PhysicalResourceId", "")
+
+        if resource_type == "AWS::Lambda::Function" and logical_id.startswith(
+            logical_id_prefix
+        ):
+            return physical_id
+
+    return None
+
+
+def assume_role(
+    role_arn: str, session_name: str = "SecondBrainTrigger"
+) -> boto3.Session:
+    """Assume a role and return a session with temporary credentials."""
+    sts = get_sts_client()
+    response = sts.assume_role(
+        RoleArn=role_arn,
+        RoleSessionName=session_name,
+    )
+
+    credentials = response["Credentials"]
+
+    return boto3.Session(
+        aws_access_key_id=credentials["AccessKeyId"],
+        aws_secret_access_key=credentials["SecretAccessKey"],
+        aws_session_token=credentials["SessionToken"],
+    )
 
 
 if __name__ == "__main__":

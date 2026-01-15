@@ -10,25 +10,6 @@ from pathlib import Path
 from common.environments import cdk_src_dir, layer_dir
 
 
-def build_layer():
-    """Build Lambda layer"""
-    print("🔧 Building Lambda layer...")
-
-    # Run layer build script
-    build_script = cdk_dir() / "build_layer.py"
-    result = subprocess.run(
-        ["python", str(build_script)], capture_output=True, text=True
-    )
-
-    if result.returncode != 0:
-        print(f"❌ Layer build failed: {result.stderr}")
-        return False
-
-    print(result.stdout)
-    print("✅ Layer build completed successfully")
-    return True
-
-
 def run_cdk(cdk_args):
     """Run CDK with provided arguments"""
     print(f"🚀 Running CDK with args: {' '.join(cdk_args)}")

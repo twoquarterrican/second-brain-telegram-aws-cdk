@@ -3,6 +3,7 @@
 Tail CloudWatch logs for Second Brain Lambda functions
 """
 
+from datetime import datetime, timedelta, timezone
 import boto3
 import click
 from datetime import datetime, timedelta
@@ -63,7 +64,7 @@ def tail_logs(
 ):
     """Tail CloudWatch logs from specified streams"""
     try:
-        start_time = datetime.utcnow() - timedelta(seconds=int(hours_back * 60 * 60))
+        start_time = datetime.now(timezone.utc) - timedelta(seconds=int(hours_back * 60 * 60))
 
         kwargs = {
             "logGroupName": log_group_name,
