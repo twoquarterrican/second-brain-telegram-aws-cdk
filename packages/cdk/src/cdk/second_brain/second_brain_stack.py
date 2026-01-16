@@ -13,7 +13,7 @@ from aws_cdk import (
 import os
 from pathlib import Path
 from constructs import Construct
-from common.environments import layer_dir, lambdas_dir, lambdas_src_dir
+from common.environments import layer_dir, lambdas_dir, lambdas_src_dir, common_dir
 
 
 class SecondBrainStack(Stack):
@@ -65,6 +65,7 @@ class SecondBrainStack(Stack):
 
         # Create Lambda layer with dependencies
         lambdas_directory = lambdas_dir()
+        common_directory = common_dir()
 
         # noinspection PyTypeChecker
         dependencies_layer = _lambda.LayerVersion(
@@ -73,16 +74,21 @@ class SecondBrainStack(Stack):
             description="Lambda layer built from pyproject.toml using uv inside Docker",
             compatible_runtimes=[_lambda.Runtime.PYTHON_3_12],
             code=_lambda.Code.from_asset(
-                path=lambdas_directory.as_posix(),  # root path for bundling
+                path=lambdas_directory.as_posix(),
                 bundling=BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_12.bundling_image,  # Amazon Linux docker image
+                    image=_lambda.Runtime.PYTHON_3_12.bundling_image,
                     command=[
                         "bash",
                         "-c",
-                        # Install uv → sync dependencies → copy into /asset-output/python
-                        "pip install uv && uv pip install --requirements pyproject.toml --target /asset-output/python && cp -r /asset-input/../common/src/common /asset-output/python/",
+                        "pip install uv && uv pip install --requirements pyproject.toml --target /asset-output/python && cp -r /common-src/src/common /asset-output/python/",
                     ],
                     user="root",
+                    volumes=[
+                        {
+                            "hostPath": common_directory.as_posix(),
+                            "containerPath": "/common-src",
+                        },
+                    ],
                 ),
             ),
         )
