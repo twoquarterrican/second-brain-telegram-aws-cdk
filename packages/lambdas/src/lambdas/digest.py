@@ -122,7 +122,8 @@ def get_completed_items(days_back: int = 30) -> List[Dict[str, Any]]:
 
         response = table.query(
             IndexName="StatusIndex",
-            KeyConditionExpression="status = :status AND created_at >= :start_date",
+            KeyConditionExpression="#s = :status AND created_at >= :start_date",
+            ExpressionAttributeNames={"#s": "status"},
             ExpressionAttributeValues={
                 ":status": "completed",
                 ":start_date": start_date,
