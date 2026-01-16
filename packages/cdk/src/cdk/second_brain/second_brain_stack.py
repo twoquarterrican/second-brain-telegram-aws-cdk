@@ -80,7 +80,7 @@ class SecondBrainStack(Stack):
                         "bash",
                         "-c",
                         # Install uv → sync dependencies → copy into /asset-output/python
-                        "pip install uv && uv pip install --requirements pyproject.toml --target /asset-output/python && cp -r /asset-output/python/common /asset-output/python/",
+                        "pip install uv && uv pip install --requirements pyproject.toml --target /asset-output/python && cp -r /asset-input/../common/src/common /asset-output/python/",
                     ],
                     user="root",
                 ),
