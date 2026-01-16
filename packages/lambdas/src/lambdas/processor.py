@@ -483,6 +483,163 @@ def handler(event, _context):
             send_telegram_message(chat_id, "\n".join(lines))
             return {"statusCode": 200, "body": "Backfill command processed"}
 
+        if text.startswith("/debug duplicates-auto"):
+            logger.info(f"[{message_id}] Auto-deduplicating items")
+            send_telegram_message(
+                chat_id, "🔄 Auto-deduplicating items from last month..."
+            )
+
+            # Query items from last month
+            from datetime import timedelta
+
+            start_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+
+            categories = ["People", "Projects", "Ideas", "Admin"]
+            all_items = []
+
+            for category in categories:
+                response = table.query(
+                    KeyConditionExpression="PK = :pk AND SK >= :start_date",
+                    ExpressionAttributeValues={
+                        ":pk": f"CATEGORY#{category}",
+                        ":start_date": start_date,
+                    },
+                )
+                for item in response.get("Items", []):
+                    item["id"] = item["SK"].split("#")[0]
+                    all_items.append(item)
+
+            if len(all_items) < 2:
+                send_telegram_message(chat_id, "📝 Not enough items to deduplicate.")
+                return {"statusCode": 200, "body": "Duplicates-auto command processed"}
+
+            # Build summary for AI
+            items_summary = []
+            for item in all_items:
+                summary = f"[ID:{item['id']}] {item.get('category', 'N/A')}: {item.get('name', 'N/A')} ({item.get('status', 'open')})"
+                if item.get("notes"):
+                    summary += f" - notes: {item['notes'][:100]}"
+                items_summary.append(summary)
+
+            items_text = "\n".join(items_summary)
+
+            # Ask AI to find duplicates and recommend actions
+            auto_prompt = f"""Analyze these items and automatically deduplicate. Return JSON with actions to take:
+
+{items_text}
+
+Return JSON:
+{{
+    "actions": [
+        {{
+            "action": "merge|delete|keep",
+            "from_id": "ID of item to merge/delete (or null)",
+            "into_id": "ID of item to merge into (or null)",
+            "reason": "why this action"
+        }}
+    ],
+    "summary": "brief summary of what was done"
+}}
+
+Rules:
+- If items have same name and one is completed, merge completed into open and delete completed
+- If items are clearly about same topic, merge newer into older, delete newer
+- Keep items that are clearly different topics
+- Use "keep" action to mark items as not duplicates"""
+
+            # Try AI classification
+            result = None
+            if ANTHROPIC_API_KEY:
+                try:
+                    import anthropic
+
+                    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+                    response = client.messages.create(
+                        model="claude-sonnet-4-20250514",
+                        max_tokens=2048,
+                        messages=[{"role": "user", "content": auto_prompt}],
+                    )
+                    content = response.content[0].text.strip()
+                    if content.startswith("```json"):
+                        content = content[7:-3].strip()
+                    result = json.loads(content)
+                except Exception as e:
+                    logger.error(f"AI auto-deduplication failed: {e}")
+
+            if not result or not result.get("actions"):
+                send_telegram_message(chat_id, "📊 No automatic deduplication needed.")
+                return {"statusCode": 200, "body": "Duplicates-auto command processed"}
+
+            # Execute actions
+            merged_count = 0
+            deleted_count = 0
+            kept_count = 0
+
+            # Build ID lookup map
+            id_to_item = {}
+            for item in all_items:
+                id_to_item[item["id"]] = item
+
+            for action in result["actions"]:
+                action_type = action.get("action")
+                from_id = action.get("from_id")
+                into_id = action.get("into_id")
+
+                if action_type == "merge" and from_id and into_id:
+                    from_item = id_to_item.get(from_id)
+                    into_item = id_to_item.get(into_id)
+                    if from_item and into_item:
+                        # Merge: append notes, copy status, delete from
+                        merged_notes = []
+                        if from_item.get("notes"):
+                            merged_notes.append(
+                                f"[From {from_id}]: {from_item['notes']}"
+                            )
+                        if into_item.get("notes"):
+                            merged_notes.append(f"[Original]: {into_item['notes']}")
+
+                        table.update_item(
+                            Key={"PK": into_item["PK"], "SK": into_item["SK"]},
+                            UpdateExpression="SET #notes = :notes, #status = :status",
+                            ExpressionAttributeNames={
+                                "#notes": "notes",
+                                "#status": "status",
+                            },
+                            ExpressionAttributeValues={
+                                ":notes": "\n\n".join(merged_notes)
+                                if merged_notes
+                                else into_item.get("notes"),
+                                ":status": from_item.get(
+                                    "status", into_item.get("status", "open")
+                                ),
+                            },
+                        )
+                        table.delete_item(
+                            Key={"PK": from_item["PK"], "SK": from_item["SK"]}
+                        )
+                        merged_count += 1
+
+                elif action_type == "delete" and from_id:
+                    from_item = id_to_item.get(from_id)
+                    if from_item:
+                        table.delete_item(
+                            Key={"PK": from_item["PK"], "SK": from_item["SK"]}
+                        )
+                        deleted_count += 1
+
+                elif action_type == "keep":
+                    kept_count += 1
+
+            # Report results
+            lines = ["✅ *Auto-Deduplication Complete*"]
+            lines.append(f"\n📊 {result.get('summary', 'Done')}")
+            lines.append(f"\n• Merged: {merged_count}")
+            lines.append(f"• Deleted: {deleted_count}")
+            lines.append(f"• Kept: {kept_count}")
+
+            send_telegram_message(chat_id, "\n".join(lines))
+            return {"statusCode": 200, "body": "Duplicates-auto command processed"}
+
         if text.startswith("/debug duplicates"):
             logger.info(f"[{message_id}] Finding duplicate items")
             send_telegram_message(
