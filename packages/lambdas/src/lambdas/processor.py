@@ -540,7 +540,7 @@ Return JSON with this structure:
     "groups": [
         {{
             "reason": "explanation of why these are duplicates",
-            "items": [{"id": "item ID", "name": "item name", "category": "category"}]
+            "items": [{{"id": "item ID", "name": "item name", "category": "category"}}]
         }}
     ],
     "total_items": total items analyzed,
