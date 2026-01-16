@@ -40,19 +40,30 @@ def get_open_items(days_back: int = 7) -> List[Dict[str, Any]]:
     """Get open items from the last N days."""
     start_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
 
+    # Query for 'open' items
     response = table.query(
         IndexName="StatusIndex",
         KeyConditionExpression="#s = :status AND created_at >= :start_date",
-        FilterExpression="attribute_not_exists(#s) OR #s = :status OR #s = :in_progress",
         ExpressionAttributeNames={"#s": "status"},
         ExpressionAttributeValues={
             ":status": "open",
-            ":in_progress": "in-progress",
             ":start_date": start_date,
         },
     )
-
     items = response.get("Items", [])
+
+    # Also query for 'in-progress' items
+    response = table.query(
+        IndexName="StatusIndex",
+        KeyConditionExpression="#s = :status AND created_at >= :start_date",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={
+            ":status": "in-progress",
+            ":start_date": start_date,
+        },
+    )
+    items.extend(response.get("Items", []))
+
     logger.info(f"Found {len(items)} open items from last {days_back} days")
     return items
 
