@@ -63,6 +63,22 @@ if __name__ == "__main__":
 - Use InquirerPy for all interactive prompts
 - Cache AWS clients and other expensive lookups with `@cache`
 
+## Deployment
+
+See [DEPLOY.md](./DEPLOY.md) for full deployment instructions.
+
+**Deploy to AWS:**
+```bash
+uv run cdkw deploy
+```
+
+**Other useful commands:**
+```bash
+uv run cdkw synth      # Preview CloudFormation template
+uv run cdkw diff       # Show changes before deploying
+uv run cdkw destroy    # Delete the stack
+```
+
 ## Environment Variables
 
 **Always use `common.environments` for environment variables in scripts.**
