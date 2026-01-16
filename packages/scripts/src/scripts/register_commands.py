@@ -91,6 +91,7 @@ AVAILABLE_COMMANDS = [
     Command("query", "Ask your second brain anything"),
     Command("recent", "Recent items by time"),
     Command("open", "Open items needing action"),
+    Command("closed", "Recently completed items"),
     Command("stalled", "Things you've been putting off"),
     Command("at", "Items by location (work, home, store)"),
     Command("waiting", "Waiting on others"),
