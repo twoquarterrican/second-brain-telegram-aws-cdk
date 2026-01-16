@@ -154,7 +154,7 @@ def get_function_name() -> Optional[str]:
     return get_stack_output("SecondBrainStack", "DigestLambdaFunctionName")
 
 
-def get_trigger_role_arn(region: str) -> Optional[str]:
+def get_trigger_role_arn() -> Optional[str]:
     """Get the trigger role ARN from CDK stack outputs."""
     return get_stack_output("SecondBrainStack", "TriggerRoleArn")
 
@@ -198,10 +198,19 @@ def find_lambda_function(logical_id_prefix: str) -> Optional[str]:
     return None
 
 
-def assume_role(
-    role_arn: str, session_name: str = "SecondBrainTrigger"
+def assume_second_brain_trigger_role(
+    session_name: str = "SecondBrainTrigger"
 ) -> boto3.Session:
     """Assume a role and return a session with temporary credentials."""
+
+    role_arn = get_trigger_role_arn()
+    if not role_arn:
+        raise ValueError(
+            "❌ Trigger role not found. Deploy CDK with TRIGGER_ROLE_TRUST_ACCOUNT set, or use --role-arn",
+        )
+
+    # Assume role if provided
+    click.echo(f"🔐 Assuming role: {role_arn}")
     sts = get_sts_client()
     response = sts.assume_role(
         RoleArn=role_arn,

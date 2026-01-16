@@ -17,6 +17,7 @@ from common.environments import (
     find_lambda_function,
     get_trigger_role_arn,
     assume_role,
+    assume_second_brain_trigger_role,
 )
 
 
@@ -64,7 +65,7 @@ def get_function_name_interactive() -> str:
 
 def get_role_arn_interactive(region: str) -> Optional[str]:
     """Get trigger role ARN interactively."""
-    role_arn = get_trigger_role_arn(region)
+    role_arn = get_trigger_role_arn()
 
     if role_arn:
         use_detected = inquirer.confirm(
@@ -102,24 +103,7 @@ def trigger_cmd(
     interactive: bool,
 ):
     """Trigger the digest Lambda function."""
-
-    region = os.getenv("AWS_REGION", "us-east-1")
-
-    role_arn = get_trigger_role_arn(region)
-    if not role_arn:
-        click.echo(
-            "❌ Trigger role not found. Deploy CDK with TRIGGER_ROLE_TRUST_ACCOUNT set, or use --role-arn",
-            err=True,
-        )
-        sys.exit(1)
-
-    # Assume role if provided
-    click.echo(f"🔐 Assuming role: {role_arn}")
-    try:
-        session = assume_role(role_arn)
-    except Exception as e:
-        click.echo(f"❌ Failed to assume role: {e}", err=True)
-        sys.exit(1)
+    session = assume_second_brain_trigger_role()
 
     # Get function name
     function_name = find_lambda_function("DigestLambda")
