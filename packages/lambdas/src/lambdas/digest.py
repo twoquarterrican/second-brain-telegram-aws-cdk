@@ -65,6 +65,31 @@ def get_open_items(days_back: int = 7) -> List[Dict[str, Any]]:
         return []
 
 
+def get_completed_items(days_back: int = 30) -> List[Dict[str, Any]]:
+    """Get completed items from the last N days."""
+    try:
+        start_date = (
+            datetime.now(timezone.utc) - timedelta(days=days_back)
+        ).isoformat()
+
+        response = table.query(
+            IndexName="StatusIndex",
+            KeyConditionExpression="status = :status AND created_at >= :start_date",
+            ExpressionAttributeValues={
+                ":status": "completed",
+                ":start_date": start_date,
+            },
+        )
+
+        items = response.get("Items", [])
+        logger.info(f"Found {len(items)} completed items from last {days_back} days")
+
+        return items
+    except Exception as e:
+        logger.error(f"Error querying completed items: {e}")
+        return []
+
+
 def get_all_items(days_back: int = 7) -> List[Dict[str, Any]]:
     """Get all items from the last N days."""
     try:
