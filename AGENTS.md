@@ -63,6 +63,32 @@ if __name__ == "__main__":
 - Use InquirerPy for all interactive prompts
 - Cache AWS clients and other expensive lookups with `@cache`
 
+## Environment Variables
+
+**Always use `common.environments` for environment variables in scripts.**
+
+When a script needs access to environment variables (API keys, AWS credentials, etc.), import from `common.environments` instead of using `os.getenv()` directly:
+
+```python
+import common.environments  # Loads .env.local automatically
+
+# Access environment variables
+api_key = common.environments.get_api_key("ANTHROPIC_API_KEY")
+session = common.environments.get_aws_session()
+```
+
+Configure variables in `.env.local`:
+
+```bash
+# .env.local
+AWS_PROFILE=myprofile
+AWS_REGION=us-east-1
+ANTHROPIC_API_KEY=your_key
+TELEGRAM_BOT_TOKEN=your_token
+```
+
+Do not use `os.environ` or `os.getenv()` in scripts.
+
 ## AssumeRole Pattern for Scripts
 
 For scripts that need elevated or scoped permissions, use the AssumeRole pattern:
@@ -206,41 +232,56 @@ def find_lambda_function(logical_id_prefix: str) -> Optional[str]:
 
 ## Exception Handling
 
-Avoid wrapping statements in `try/except` without a good reason. Good reasons include:
+**Critical: Let exceptions propagate. Do not suppress them.**
 
-- **Retrying** on transient failures
-- **Logging** errors with context before re-raising
-- **Adding information** to the error for debugging
-- **Processing more items** in a list before failing (batch operations)
+Avoid wrapping statements in `try/except` without a very good reason. Users need to see errors to understand and fix problems. Swallowed exceptions make debugging impossible.
 
-### Bad Pattern (Don't Do This)
+### Good Reasons for try/except
+
+- **Retrying** on transient failures (with limit)
+- **Adding context** before re-raising
+- **Processing batch items** where some may fail (continue processing others)
+- **Expected, handleable conditions** (not general Exception)
+
+### Bad Patterns (Don't Do This)
 
 ```python
-# Swallows all errors, no context, caller can't debug
+# BAD: Swallows all errors, no visibility
 try:
     do_something()
 except Exception:
     return None
+
+# BAD: Uses bare Exception, too broad
+try:
+    do_something()
+except:
+    return None
+
+# BAD: Silently fails
+try:
+    result = client.request()
+except Exception:
+    pass
 ```
 
 ### Good Patterns
 
 ```python
-# Let the exception propagate with original traceback
+# GOOD: Let caller handle errors
 def do_something():
-    # No try/except - let caller handle errors
     client.make_request()
     return result
 
-# Add context before re-raising
+# GOOD: Add context before re-raising
 def do_something():
     try:
         result = client.make_request()
     except ClientError as e:
-        logger.error(f"Failed to make request: {e}")
+        logger.error(f"Request failed: {e}")
         raise
 
-# Handle expected conditions gracefully
+# GOOD: Handle specific expected conditions
 def process_items(items):
     results = []
     for item in items:
@@ -251,3 +292,11 @@ def process_items(items):
             continue
     return results
 ```
+
+### Key Principles
+
+1. **Never use bare `except:`** - always catch specific exceptions
+2. **Never catch `Exception`** - catch specific subclasses
+3. **Never swallow exceptions** - always either re-raise or handle specifically
+4. **Let failures surface** - users need to see errors to fix them
+5. **Add context when re-raising** - help users understand what failed and why

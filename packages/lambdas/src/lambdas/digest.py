@@ -166,7 +166,7 @@ def send_telegram_message(chat_id: str, text: str) -> bool:
 
 
 def generate_digest_summary(digest_type: str = "daily") -> Optional[str]:
-    """Generate digest summary."""
+    """Generate digest summary - callable from other Lambdas."""
     # Determine how many days to look back
     days_back = 1 if digest_type == "daily" else 7
 
@@ -227,7 +227,7 @@ def handler(event, context):
 
         logger.info(f"Generating {digest_type} digest")
 
-        # Generate summary
+        # Generate summary using core function
         summary = generate_digest_summary(digest_type)
         if not summary:
             logger.error("Failed to generate digest summary")

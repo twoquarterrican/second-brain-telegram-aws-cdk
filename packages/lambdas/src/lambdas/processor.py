@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import requests
 
+from lambdas.digest import generate_digest_summary
+
 
 # Configure logging
 logger = logging.getLogger()
@@ -284,6 +286,17 @@ def handler(event, _context):
         )
 
         logger.info(f"Processing message from chat {chat_id}: {snippet}...")
+
+        # Handle commands
+        if text.startswith("/digest"):
+            digest_type = "daily" if "daily" in text.lower() else "weekly"
+            logger.info(f"[{message_id}] Generating {digest_type} digest")
+            summary = generate_digest_summary(digest_type)
+            if summary:
+                send_telegram_message(chat_id, summary)
+            else:
+                send_telegram_message(chat_id, "❌ Failed to generate digest")
+            return {"statusCode": 200, "body": "Digest command processed"}
 
         # Process and classify message
         result = process_message(text)

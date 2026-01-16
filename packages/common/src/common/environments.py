@@ -217,5 +217,20 @@ def assume_role(
     )
 
 
+def get_telegram_bot_token() -> str:
+    """Get Telegram bot token from environment.
+
+    Returns:
+        The bot token string.
+
+    Raises:
+        ValueError: If TELEGRAM_BOT_TOKEN is not set.
+    """
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set")
+    return token
+
+
 if __name__ == "__main__":
     print_aws_config()
