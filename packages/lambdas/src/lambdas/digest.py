@@ -6,8 +6,6 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 import requests
 
-from common.logging import log_error
-
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -40,125 +38,56 @@ Keep it concise but actionable."""
 
 def get_open_items(days_back: int = 7) -> List[Dict[str, Any]]:
     """Get open items from the last N days."""
-    try:
-        start_date = (
-            datetime.now(timezone.utc) - timedelta(days=days_back)
-        ).isoformat()
+    start_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
 
-        response = table.query(
-            IndexName="StatusIndex",
-            KeyConditionExpression="#s = :status AND created_at >= :start_date",
-            FilterExpression="attribute_not_exists(#s) OR #s = :status OR #s = :in_progress",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={
-                ":status": "open",
-                ":in_progress": "in-progress",
-                ":start_date": start_date,
-            },
-        )
+    response = table.query(
+        IndexName="StatusIndex",
+        KeyConditionExpression="#s = :status AND created_at >= :start_date",
+        FilterExpression="attribute_not_exists(#s) OR #s = :status OR #s = :in_progress",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={
+            ":status": "open",
+            ":in_progress": "in-progress",
+            ":start_date": start_date,
+        },
+    )
 
-        items = response.get("Items", [])
-        logger.info(f"Found {len(items)} open items from last {days_back} days")
-
-        return items
-    except Exception as e:
-        log_error("Error querying open items", str(e))
-        return []
+    items = response.get("Items", [])
+    logger.info(f"Found {len(items)} open items from last {days_back} days")
+    return items
 
 
 def get_completed_items(days_back: int = 30) -> List[Dict[str, Any]]:
     """Get completed items from the last N days."""
-    try:
-        start_date = (
-            datetime.now(timezone.utc) - timedelta(days=days_back)
-        ).isoformat()
+    start_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
 
-        response = table.query(
-            IndexName="StatusIndex",
-            KeyConditionExpression="#s = :status AND created_at >= :start_date",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={
-                ":status": "completed",
-                ":start_date": start_date,
-            },
-        )
+    response = table.query(
+        IndexName="StatusIndex",
+        KeyConditionExpression="#s = :status AND created_at >= :start_date",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={
+            ":status": "completed",
+            ":start_date": start_date,
+        },
+    )
 
-        items = response.get("Items", [])
-        logger.info(f"Found {len(items)} completed items from last {days_back} days")
-
-        return items
-    except Exception as e:
-        log_error("Error querying completed items", str(e))
-        return []
+    items = response.get("Items", [])
+    logger.info(f"Found {len(items)} completed items from last {days_back} days")
+    return items
 
 
 def get_all_items(days_back: int = 7) -> List[Dict[str, Any]]:
     """Get all items from the last N days."""
-    try:
-        start_date = (
-            datetime.now(timezone.utc) - timedelta(days=days_back)
-        ).isoformat()
+    start_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
 
-        response = table.scan(
-            FilterExpression="created_at >= :start_date",
-            ExpressionAttributeValues={":start_date": start_date},
-        )
+    response = table.scan(
+        FilterExpression="created_at >= :start_date",
+        ExpressionAttributeValues={":start_date": start_date},
+    )
 
-        items = response.get("Items", [])
-        logger.info(f"Found {len(items)} total items from last {days_back} days")
-
-        return items
-    except Exception as e:
-        log_error("Error scanning items", str(e))
-        return []
-
-
-def get_completed_items(days_back: int = 30) -> List[Dict[str, Any]]:
-    """Get completed items from the last N days."""
-    try:
-        start_date = (
-            datetime.now(timezone.utc) - timedelta(days=days_back)
-        ).isoformat()
-
-        response = table.query(
-            IndexName="StatusIndex",
-            KeyConditionExpression="#s = :status AND created_at >= :start_date",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={
-                ":status": "completed",
-                ":start_date": start_date,
-            },
-        )
-
-        items = response.get("Items", [])
-        logger.info(f"Found {len(items)} completed items from last {days_back} days")
-
-        return items
-    except Exception as e:
-        logger.error(f"Error querying completed items: {e}")
-        return []
-
-
-def get_all_items(days_back: int = 7) -> List[Dict[str, Any]]:
-    """Get all items from the last N days."""
-    try:
-        start_date = (
-            datetime.now(timezone.utc) - timedelta(days=days_back)
-        ).isoformat()
-
-        # Scan all items and filter by date
-        response = table.scan(
-            FilterExpression="created_at >= :start_date",
-            ExpressionAttributeValues={":start_date": start_date},
-        )
-
-        items = response.get("Items", [])
-        logger.info(f"Found {len(items)} total items from last {days_back} days")
-
-        return items
-    except Exception as e:
-        logger.error(f"Error scanning items: {e}")
-        return []
+    items = response.get("Items", [])
+    logger.info(f"Found {len(items)} total items from last {days_back} days")
+    return items
 
 
 def summarize_with_anthropic(items: List[Dict[str, Any]]) -> Optional[str]:
