@@ -10,6 +10,29 @@ import requests
 from lambdas.digest import generate_digest_summary, get_open_items, get_completed_items
 
 
+def count_items() -> Dict[str, Dict[str, int]]:
+    """Count items by category and status."""
+    try:
+        response = table.scan()
+        items = response.get("Items", [])
+
+        counts: Dict[str, Dict[str, int]] = {}
+        for item in items:
+            cat = item.get("category", "Unknown")
+            status = item.get("status", "none")
+
+            if cat not in counts:
+                counts[cat] = {}
+            if status not in counts[cat]:
+                counts[cat][status] = 0
+            counts[cat][status] += 1
+
+        return counts
+    except Exception as e:
+        logger.error(f"Error counting items: {e}")
+        return {}
+
+
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -350,6 +373,30 @@ def handler(event, _context):
             else:
                 send_telegram_message(chat_id, "📝 No completed items found.")
             return {"statusCode": 200, "body": "Closed command processed"}
+
+        if text.startswith("/debug count"):
+            logger.info(f"[{message_id}] Counting items")
+            counts = count_items()
+
+            if not counts:
+                send_telegram_message(
+                    chat_id, "❌ Failed to count items or table is empty."
+                )
+            else:
+                lines = ["🔢 *Item Counts*"]
+                grand_total = 0
+                for cat, status_counts in sorted(counts.items()):
+                    cat_total = sum(status_counts.values())
+                    grand_total += cat_total
+                    lines.append(f"\n📂 *{cat}* (total: {cat_total})")
+                    for status, count in status_counts.items():
+                        status_label = status if status != "none" else "no status"
+                        lines.append(f"   • {status_label}: {count}")
+
+                lines.append(f"\n🏁 Grand total: {grand_total}")
+                send_telegram_message(chat_id, "\n".join(lines))
+
+            return {"statusCode": 200, "body": "Debug count command processed"}
 
         # Process and classify message
         result = process_message(text)
