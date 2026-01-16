@@ -210,26 +210,65 @@ def send_telegram_message(chat_id: str, text: str) -> bool:
 
 
 def save_to_dynamodb(item_data: Dict[str, Any]) -> bool:
-    """Save classified item to DynamoDB."""
+    """Save classified item to DynamoDB. Updates existing item if found by name."""
     try:
         timestamp = datetime.now(timezone.utc).isoformat()
-        uuid = f"{timestamp}#{item_data['category']}#{hash(item_data['original_text']) % 10000}"
+        category = item_data["category"]
+        name = item_data.get("name")
 
+        # Check for existing item with same category and name
+        existing_item = None
+        if name:
+            response = table.query(
+                KeyConditionExpression="PK = :pk",
+                ExpressionAttributeValues={
+                    ":pk": f"CATEGORY#{category}",
+                },
+            )
+            for item in response.get("Items", []):
+                if item.get("name") == name:
+                    existing_item = item
+                    break
+
+        if existing_item:
+            # Update existing item
+            table.update_item(
+                Key={"PK": existing_item["PK"], "SK": existing_item["SK"]},
+                UpdateExpression="SET #status = :status, #next_action = :next_action, #notes = :notes, updated_at = :updated_at",
+                ExpressionAttributeNames={
+                    "#status": "status",
+                    "#next_action": "next_action",
+                    "#notes": "notes",
+                },
+                ExpressionAttributeValues={
+                    ":status": item_data.get("status", "open"),
+                    ":next_action": item_data.get("next_action"),
+                    ":notes": item_data.get("notes"),
+                    ":updated_at": timestamp,
+                },
+            )
+            logger.info(
+                f"Updated existing item: {existing_item['PK']}#{existing_item['SK']}"
+            )
+            return True
+
+        # Create new item
+        uuid = f"{timestamp}#{category}#{hash(item_data['original_text']) % 10000}"
         item = {
-            "PK": f"CATEGORY#{item_data['category']}",
+            "PK": f"CATEGORY#{category}",
             "SK": uuid,
             "created_at": timestamp,
             "status": item_data.get("status", "open"),
-            "name": item_data.get("name"),
+            "name": name,
             "next_action": item_data.get("next_action"),
             "notes": item_data.get("notes"),
             "original_text": item_data["original_text"],
             "confidence": item_data["confidence"],
-            "category": item_data["category"],
+            "category": category,
         }
 
         table.put_item(Item=item)
-        logger.info(f"Saved item to DynamoDB: {item['PK']}#{item['SK']}")
+        logger.info(f"Saved new item to DynamoDB: {item['PK']}#{item['SK']}")
         return True
     except Exception as e:
         logger.error(f"Failed to save to DynamoDB: {e}")
