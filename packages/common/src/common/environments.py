@@ -5,8 +5,8 @@ Reads configuration from env.json and provides boto3 session helpers
 """
 
 import os
-import json
 import boto3
+import click
 from typing import Optional
 from functools import cache
 from pathlib import Path
@@ -15,6 +15,18 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=(Path(__file__).parents[1] / "env.local"))
 
+@cache
+def get_dynamo_client(second_brain_trigger_role: bool = False):
+    """Get DynamoDB client with assumed role credentials."""
+    session = get_aws_session(second_brain_trigger_role=second_brain_trigger_role)
+    return session.resource("dynamodb")
+
+
+@cache
+def get_table(second_brain_trigger_role: bool = True):
+    """Get the SecondBrain table."""
+    client = get_dynamo_client(second_brain_trigger_role=second_brain_trigger_role)
+    return client.Table("SecondBrain")
 
 @cache
 def project_root() -> Path:
@@ -85,8 +97,10 @@ def layer_dir() -> Path:
 
 
 @cache
-def get_aws_session() -> boto3.Session:
+def get_aws_session(second_brain_trigger_role: bool) -> boto3.Session:
     """Get AWS session with preferred configuration"""
+    if second_brain_trigger_role:
+        return assume_second_brain_trigger_role()
 
     # Get profile from env.json, then environment, then default
     profile = os.getenv("AWS_PROFILE")
@@ -98,45 +112,43 @@ def get_aws_session() -> boto3.Session:
 
 
 @cache
-def get_boto3_client(service_name: str, **kwargs):
+def get_boto3_client(service_name: str, second_brain_trigger_role: bool, **kwargs):
     """Get boto3 client with preferred configuration"""
-    session = get_aws_session()
+    session = get_aws_session(second_brain_trigger_role=second_brain_trigger_role)
     return session.client(service_name, **kwargs)
 
 
 @cache
-def get_boto3_resource(service_name: str, **kwargs):
+def get_boto3_resource(service_name: str, second_brain_trigger_role: bool, **kwargs):
     """Get boto3 resource with preferred configuration"""
-    session = get_aws_session()
+    session = get_aws_session(second_brain_trigger_role=second_brain_trigger_role)
     return session.resource(service_name, **kwargs)
 
 
 @cache
-def get_lambda_client(region: Optional[str] = None):
+def get_lambda_client():
     """Get AWS Lambda client with configured session."""
-    session = get_aws_session()
-    region = region or os.getenv("AWS_REGION", "us-east-1")
-    return session.client("lambda", region_name=region)
+    session = get_aws_session(second_brain_trigger_role=True)
+    return session.client("lambda")
 
 
 @cache
-def get_cfn_client(region: str):
+def get_cfn_client():
     """Get CloudFormation client."""
-    session = get_aws_session()
-    return session.client("cloudformation", region_name=region)
+    session = get_aws_session(second_brain_trigger_role=False)
+    return session.client("cloudformation")
 
 
 @cache
-def get_sts_client(region: str = "us-east-1"):
+def get_sts_client():
     """Get STS client."""
-    session = get_aws_session()
-    return session.client("sts", region_name=region)
+    session = get_aws_session(second_brain_trigger_role=False)
+    return session.client("sts")
 
 
 def get_stack_output(stack_name: str, output_key: str) -> Optional[str]:
     """Get a specific output from CloudFormation stack."""
-    region = os.getenv("AWS_REGION", "us-east-1")
-    cfn = get_cfn_client(region)
+    cfn = get_cfn_client()
     response = cfn.describe_stacks(StackName=stack_name)
     stacks = response.get("Stacks", [])
     if not stacks:
@@ -223,6 +235,7 @@ def assume_second_brain_trigger_role(
         aws_access_key_id=credentials["AccessKeyId"],
         aws_secret_access_key=credentials["SecretAccessKey"],
         aws_session_token=credentials["SessionToken"],
+        region_name=os.getenv("AWS_REGION"),
     )
 
 

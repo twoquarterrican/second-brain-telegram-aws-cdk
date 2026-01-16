@@ -16,7 +16,7 @@ from InquirerPy import inquirer
 
 def get_lambda_functions() -> Iterable[str]:
     """Get all Lambda functions in Second Brain stack"""
-    cf_client = get_boto3_client("cloudformation")
+    cf_client = get_boto3_client("cloudformation", second_brain_trigger_role=False)
     paginator = cf_client.get_paginator("list_stack_resources")
     # Use paginator to handle stacks with many resources
     page_iterator = paginator.paginate(StackName="SecondBrainStack")
@@ -153,7 +153,7 @@ def tail(lambda_name: Optional[str], follow: bool, hours: float):
         click.echo("📡 Following logs (Ctrl+C to stop)")
 
     # Initialize CloudWatch Logs client
-    logs_client = get_boto3_client("logs")
+    logs_client = get_boto3_client("logs", second_brain_trigger_role=False)
     if not lambda_name:
         click.echo("❌ No Lambda function selected", err=True)
         return
