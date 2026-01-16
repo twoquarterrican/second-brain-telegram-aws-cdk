@@ -483,6 +483,195 @@ def handler(event, _context):
             send_telegram_message(chat_id, "\n".join(lines))
             return {"statusCode": 200, "body": "Backfill command processed"}
 
+        if text.startswith("/debug duplicates"):
+            logger.info(f"[{message_id}] Finding duplicate items")
+            send_telegram_message(
+                chat_id, "🔍 Analyzing items from last month for duplicates..."
+            )
+
+            # Query items from last month
+            from datetime import timedelta
+
+            start_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+
+            categories = ["People", "Projects", "Ideas", "Admin"]
+            all_items = []
+
+            for category in categories:
+                response = table.query(
+                    KeyConditionExpression="PK = :pk AND SK >= :start_date",
+                    ExpressionAttributeValues={
+                        ":pk": f"CATEGORY#{category}",
+                        ":start_date": start_date,
+                    },
+                )
+                for item in response.get("Items", []):
+                    item["id"] = item["SK"].split("#")[0]  # Use timestamp as short ID
+                    all_items.append(item)
+
+            if len(all_items) < 2:
+                send_telegram_message(
+                    chat_id, "📝 Not enough items to find duplicates."
+                )
+                return {"statusCode": 200, "body": "Duplicates command processed"}
+
+            # Build summary for AI
+            items_summary = []
+            for item in all_items:
+                summary = f"[ID:{item['id']}] {item.get('category', 'N/A')}: {item.get('name', 'N/A')} ({item.get('status', 'open')})"
+                if item.get("next_action"):
+                    summary += f" - next: {item['next_action']}"
+                items_summary.append(summary)
+
+            items_text = "\n".join(items_summary)
+
+            # Ask AI to find duplicates
+            duplicate_prompt = f"""Analyze these items and find potential duplicates (items with similar names or topics):
+
+{items_text}
+
+Look for:
+- Items with the same or very similar names
+- Items that appear to be about the same topic
+- Multiple items that should be consolidated
+
+Return JSON with this structure:
+{{
+    "groups": [
+        {{
+            "reason": "explanation of why these are duplicates",
+            "items": [{"id": "item ID", "name": "item name", "category": "category"}]
+        }}
+    ],
+    "total_items": total items analyzed,
+    "potential_duplicates": count of items in duplicate groups
+}}
+
+Only group items that are clearly duplicates. Return empty groups if items seem unique."""
+
+            # Try AI classification
+            duplicates = None
+            if ANTHROPIC_API_KEY:
+                try:
+                    import anthropic
+
+                    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+                    response = client.messages.create(
+                        model="claude-sonnet-4-20250514",
+                        max_tokens=2048,
+                        messages=[{"role": "user", "content": duplicate_prompt}],
+                    )
+                    content = response.content[0].text.strip()
+                    if content.startswith("```json"):
+                        content = content[7:-3].strip()
+                    duplicates = json.loads(content)
+                except Exception as e:
+                    logger.error(f"AI duplicate detection failed: {e}")
+
+            if not duplicates or not duplicates.get("groups"):
+                send_telegram_message(
+                    chat_id,
+                    f"📊 Analyzed {len(all_items)} items. No obvious duplicates found.",
+                )
+                return {"statusCode": 200, "body": "Duplicates command processed"}
+
+            # Send potential duplicates to user
+            lines = ["🔍 *Potential Duplicates Found*\n"]
+            lines.append(
+                f"Found {duplicates['potential_duplicates']} potential duplicates across {len(duplicates['groups'])} groups:\n"
+            )
+
+            for i, group in enumerate(duplicates["groups"], 1):
+                lines.append(f"*Group {i}:* {group['reason']}")
+                for item in group["items"]:
+                    lines.append(
+                        f"  • [ID:{item['id']}] {item['name']} ({item['category']})"
+                    )
+                lines.append("")
+
+            lines.append("---")
+            lines.append("*Resolution options:*")
+            lines.append(
+                "  `/merge FROM_ID INTO_ID` - Merge FROM into INTO, keep both data"
+            )
+            lines.append("  `/delete ID` - Delete this item")
+            lines.append("  `/keep ID ID...` - Mark these as not duplicates")
+
+            send_telegram_message(chat_id, "\n".join(lines))
+            return {"statusCode": 200, "body": "Duplicates command processed"}
+
+        if text.startswith("/merge "):
+            # Parse: /merge FROM_ID INTO_ID
+            parts = text.split()[1:]
+            if len(parts) != 2:
+                send_telegram_message(chat_id, "Usage: /merge FROM_ID INTO_ID")
+                return {"statusCode": 200, "body": "Merge command processed"}
+
+            from_id, into_id = parts
+            logger.info(f"[{message_id}] Merging {from_id} into {into_id}")
+
+            # Find both items
+            from_item = None
+            into_item = None
+            for item in table.scan().get("Items", []):
+                sk_prefix = item.get("SK", "")
+                if sk_prefix.startswith(from_id + "#"):
+                    from_item = item
+                elif sk_prefix.startswith(into_id + "#"):
+                    into_item = item
+
+            if not from_item:
+                send_telegram_message(chat_id, f"❌ Item {from_id} not found")
+                return {"statusCode": 200, "body": "Merge command processed"}
+
+            if not into_item:
+                send_telegram_message(chat_id, f"❌ Item {into_id} not found")
+                return {"statusCode": 200, "body": "Merge command processed"}
+
+            # Merge: update into_item with from_item's data, delete from_item
+            merged_notes = []
+            if from_item.get("notes"):
+                merged_notes.append(f"[From {from_id}]: {from_item['notes']}")
+            if into_item.get("notes"):
+                merged_notes.append(f"[Original]: {into_item['notes']}")
+
+            table.update_item(
+                Key={"PK": into_item["PK"], "SK": into_item["SK"]},
+                UpdateExpression="SET #notes = :notes, #status = :status",
+                ExpressionAttributeNames={"#notes": "notes", "#status": "status"},
+                ExpressionAttributeValues={
+                    ":notes": "\n\n".join(merged_notes)
+                    if merged_notes
+                    else into_item.get("notes"),
+                    ":status": from_item.get("status", into_item.get("status", "open")),
+                },
+            )
+
+            table.delete_item(Key={"PK": from_item["PK"], "SK": from_item["SK"]})
+
+            send_telegram_message(chat_id, f"✅ Merged {from_id} into {into_id}")
+            return {"statusCode": 200, "body": "Merge command processed"}
+
+        if text.startswith("/delete "):
+            # Parse: /delete ID
+            parts = text.split()
+            if len(parts) != 2:
+                send_telegram_message(chat_id, "Usage: /delete ID")
+                return {"statusCode": 200, "body": "Delete command processed"}
+
+            item_id = parts[1]
+            logger.info(f"[{message_id}] Deleting item {item_id}")
+
+            # Find and delete item
+            for item in table.scan().get("Items", []):
+                if item.get("SK", "").startswith(item_id + "#"):
+                    table.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+                    send_telegram_message(chat_id, f"✅ Deleted item {item_id}")
+                    return {"statusCode": 200, "body": "Delete command processed"}
+
+            send_telegram_message(chat_id, f"❌ Item {item_id} not found")
+            return {"statusCode": 200, "body": "Delete command processed"}
+
         # Process and classify message
         result = process_message(text)
 
