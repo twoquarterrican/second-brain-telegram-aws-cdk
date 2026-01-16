@@ -170,25 +170,24 @@ def generate_digest_summary(digest_type: str = "daily") -> Optional[str]:
     # Determine how many days to look back
     days_back = 1 if digest_type == "daily" else 7
 
-    # Get items
-    open_items = get_open_items(days_back)
-    all_items = get_all_items(days_back)
+    # Get items - only open/in-progress (no completed)
+    items = get_open_items(days_back)
 
-    if not all_items:
-        return f"📝 No items found in the last {days_back} days."
+    if not items:
+        return f"📝 No open items found in the last {days_back} days."
 
     # Try to generate AI summary
     summary = None
     if ANTHROPIC_API_KEY:
-        summary = summarize_with_anthropic(all_items)
+        summary = summarize_with_anthropic(items)
     elif OPENAI_API_KEY:
-        summary = summarize_with_openai(all_items)
+        summary = summarize_with_openai(items)
 
     # Fallback to simple summary if AI fails
     if not summary:
         # Group by category
         categories = {}
-        for item in all_items:
+        for item in items:
             cat = item.get("category", "Unknown")
             if cat not in categories:
                 categories[cat] = []
@@ -196,12 +195,12 @@ def generate_digest_summary(digest_type: str = "daily") -> Optional[str]:
 
         # Build simple summary
         summary_lines = [f"📊 {digest_type.title()} Digest ({days_back} days)"]
-        summary_lines.append(f"Total items: {len(all_items)}")
+        summary_lines.append(f"Open items: {len(items)}")
 
-        for category, items in categories.items():
-            summary_lines.append(f"\n📂 {category}: {len(items)} items")
+        for category, cat_items in categories.items():
+            summary_lines.append(f"\n📂 {category}: {len(cat_items)} items")
             # Show items with next actions
-            for item in items:
+            for item in cat_items:
                 if item.get("next_action"):
                     name = item.get("name", "No name")
                     action = item.get("next_action")
