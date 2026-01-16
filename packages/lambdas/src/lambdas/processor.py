@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import requests
 
-from lambdas.digest import generate_digest_summary
+from lambdas.digest import generate_digest_summary, get_open_items
 
 
 # Configure logging
@@ -297,6 +297,35 @@ def handler(event, _context):
             else:
                 send_telegram_message(chat_id, "❌ Failed to generate digest")
             return {"statusCode": 200, "body": "Digest command processed"}
+
+        if text.startswith("/open"):
+            logger.info(f"[{message_id}] Getting open items")
+            items = get_open_items(days_back=30)
+            if items:
+                # Group by category
+                categories = {}
+                for item in items:
+                    cat = item.get("category", "Unknown")
+                    if cat not in categories:
+                        categories[cat] = []
+                    categories[cat].append(item)
+
+                lines = ["📋 *Open Items*"]
+                for cat, cat_items in categories.items():
+                    lines.append(f"\n📂 *{cat}* ({len(cat_items)})")
+                    for item in cat_items:
+                        name = item.get("name", "No name")
+                        action = item.get("next_action", "No action")
+                        status = item.get("status", "open")
+                        status_emoji = "🔄" if status == "in-progress" else "📌"
+                        lines.append(f"{status_emoji} {name}")
+                        if action and action != "No action":
+                            lines.append(f"   → {action}")
+
+                send_telegram_message(chat_id, "\n".join(lines))
+            else:
+                send_telegram_message(chat_id, "📝 No open items found.")
+            return {"statusCode": 200, "body": "Open command processed"}
 
         # Process and classify message
         result = process_message(text)
