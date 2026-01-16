@@ -157,6 +157,7 @@ class SecondBrainStack(Stack):
         trigger_role = self._create_trigger_role(
             processor_lambda,
             digest_lambda,
+            table,
         )
 
         # Outputs
@@ -186,6 +187,7 @@ class SecondBrainStack(Stack):
         self,
         processor_lambda: _lambda.Function,
         digest_lambda: _lambda.Function,
+        table: dynamodb.Table,
     ) -> iam.Role:
         """Create a role that can be assumed to invoke lambdas."""
 
@@ -206,6 +208,21 @@ class SecondBrainStack(Stack):
                 resources=[
                     processor_lambda.function_arn,
                     digest_lambda.function_arn,
+                ],
+            )
+        )
+
+        # Allow DynamoDB query and scan on table and GSI
+        trigger_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "dynamodb:Query",
+                    "dynamodb:Scan",
+                ],
+                resources=[
+                    table.table_arn,
+                    f"{table.table_arn}/index/StatusIndex",
                 ],
             )
         )
