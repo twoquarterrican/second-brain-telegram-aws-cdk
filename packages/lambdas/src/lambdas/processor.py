@@ -1,6 +1,4 @@
 import json
-import os
-import sys
 import logging
 import boto3
 from datetime import datetime, timezone
@@ -8,40 +6,26 @@ from typing import Dict, Any, Optional
 import requests
 
 from lambdas.digest import generate_digest_summary, get_open_items, get_completed_items
-from lambdas.embedding_matcher import save_to_dynamodb_with_embedding, derive_status
+from lambdas.actions import (
+    digest,
+    open_items,
+    closed_items,
+    debug_count,
+    debug_backfill,
+    debug_duplicates_auto,
+    debug_duplicates,
+    merge,
+    delete,
+    process as process_action,
+)
+from lambdas.embedding_matcher import save_to_dynamodb_with_embedding
 
 
-def count_items() -> Dict[str, Dict[str, int]]:
-    """Count items by category and status."""
-    try:
-        response = table.scan()
-        items = response.get("Items", [])
-
-        counts: Dict[str, Dict[str, int]] = {}
-        for item in items:
-            cat = item.get("category", "Unknown")
-            status = item.get("status", "none")
-
-            if cat not in counts:
-                counts[cat] = {}
-            if status not in counts[cat]:
-                counts[cat][status] = 0
-            counts[cat][status] += 1
-
-        return counts
-    except Exception as e:
-        logger.error(f"Error counting items: {e}")
-        return {}
-
-
-# Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 dynamodb = boto3.resource("dynamodb")
-
-table_name = os.getenv("DDB_TABLE_NAME", "SecondBrain")
-table = dynamodb.Table(table_name)
+table = dynamodb.Table("SecondBrain")
 
 
 def _get_env(key: str, default: str = "") -> str | None:
@@ -51,7 +35,6 @@ def _get_env(key: str, default: str = "") -> str | None:
     return value
 
 
-# Environment variables
 ANTHROPIC_API_KEY = _get_env("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = _get_env("OPENAI_API_KEY")
 BEDROCK_REGION = _get_env("BEDROCK_REGION", "us-east-1")
@@ -59,7 +42,7 @@ TELEGRAM_BOT_TOKEN = _get_env("TELEGRAM_BOT_TOKEN")
 TELEGRAM_SECRET_TOKEN = _get_env("TELEGRAM_SECRET_TOKEN")
 USER_CHAT_ID = _get_env("USER_CHAT_ID")
 
-# AI Classification prompt
+
 CLASSIFICATION_PROMPT = """Classify the following message into one of these categories: People, Projects, Ideas, Admin.
 
 Extract following fields if present:
@@ -72,7 +55,7 @@ Return ONLY a JSON object with this structure:
 {{
     "category": "People|Projects|Ideas|Admin",
     "name": "string or null",
-    "status": "string or null", 
+    "status": "string or null",
     "next_action": "string or null",
     "notes": "string or null",
     "confidence": 0-100
@@ -88,7 +71,6 @@ def classify_with_anthropic(message: str) -> Optional[Dict[str, Any]]:
 
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-        # noinspection PyTypeChecker
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
@@ -101,7 +83,6 @@ def classify_with_anthropic(message: str) -> Optional[Dict[str, Any]]:
         )
 
         content = response.content[0].text.strip()
-        # Extract JSON from response
         if content.startswith("```json"):
             content = content[7:-3].strip()
 
@@ -118,7 +99,6 @@ def classify_with_openai(message: str) -> Optional[Dict[str, Any]]:
 
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-        # noinspection PyTypeChecker
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -144,15 +124,14 @@ def classify_with_bedrock(message: str) -> Optional[Dict[str, Any]]:
     """Classify message using AWS Bedrock."""
     try:
         import boto3
+        import botocore
 
-        # Create Bedrock client with region-specific config
         bedrock_config = {
             "region_name": BEDROCK_REGION,
             "config": botocore.Config(read_timeout=60, retries={"max_attempts": 3}),
         }
         bedrock = boto3.client("bedrock-runtime", **bedrock_config)
 
-        # Use Anthropic Claude via Bedrock with provisioned throughput
         try:
             response = bedrock.converse(
                 modelId="anthropic.claude-3-haiku-20240307-v1:0",
@@ -172,7 +151,6 @@ def classify_with_bedrock(message: str) -> Optional[Dict[str, Any]]:
             logger.warning(
                 f"Provisioned throughput failed, trying on-demand: {provisioned_error}"
             )
-            # Fallback to on-demand
             response = bedrock.converse(
                 modelId="anthropic.claude-3-haiku-20240307-v1:0",
                 messages=[
@@ -185,7 +163,6 @@ def classify_with_bedrock(message: str) -> Optional[Dict[str, Any]]:
                 temperature=0.1,
             )
 
-        # Extract content from Bedrock response
         content = response["output"]["message"]["content"]
         if content.startswith("```json"):
             content = content[7:-3].strip()
@@ -212,7 +189,6 @@ def send_telegram_message(chat_id: str, text: str) -> bool:
 
 def process_message(message: str) -> Dict[str, Any]:
     """Process and classify a message."""
-    # Try Anthropic first, then OpenAI, then Bedrock
     result = None
     if ANTHROPIC_API_KEY:
         result = classify_with_anthropic(message)
@@ -224,10 +200,8 @@ def process_message(message: str) -> Dict[str, Any]:
     if not result:
         raise Exception("All AI classification attempts failed")
 
-    # Add original text to result
     result["original_text"] = message
 
-    # Validate confidence
     confidence = result.get("confidence", 0)
     if not isinstance(confidence, int):
         try:
@@ -240,38 +214,44 @@ def process_message(message: str) -> Dict[str, Any]:
     return result
 
 
+COMMAND_DISPATCH = [
+    ("/digest", digest),
+    ("/open", open_items),
+    ("/closed", closed_items),
+    ("/debug count", debug_count),
+    ("/debug backfill", debug_backfill),
+    ("/debug duplicates-auto", debug_duplicates_auto),
+    ("/debug duplicates", debug_duplicates),
+    ("/merge", merge),
+    ("/delete", delete),
+    (None, process_action),
+]
+
+
 def handler(event, _context):
     """Main Lambda handler for Telegram webhook."""
     import uuid
 
-    message_id = str(uuid.uuid4())[:8]  # Add unique ID for debugging
+    message_id = str(uuid.uuid4())[:8]
     logger.info(f"[{message_id}] Received event: {json.dumps(event)}")
 
-    # Verify webhook secret
     headers = event.get("headers", {})
     received_secret = headers.get("x-telegram-bot-api-secret-token")
     expected_secret = TELEGRAM_SECRET_TOKEN
 
     if expected_secret and received_secret != expected_secret:
-        logger.error(f"❌ Invalid webhook secret")
-        logger.error(f"  Expected: {expected_secret}")
-        logger.error(f"  Received: {received_secret}")
+        logger.error(f"Invalid webhook secret")
         return {"statusCode": 403, "body": "Forbidden"}
 
     try:
-        # Parse webhook body
         if isinstance(event.get("body"), str):
             webhook_data = json.loads(event["body"])
         else:
             webhook_data = event["body"]
 
-        # Extract message
         message = webhook_data.get("message", {})
         text = message.get("text", "")
         chat_id = str(message.get("chat", {}).get("id", ""))
-        snippet = text[:50]
-
-        # Extract unique message identifier to detect duplicates
         message_unique_id = message.get("message_id", "")
 
         if not text:
@@ -279,513 +259,20 @@ def handler(event, _context):
             return {"statusCode": 200, "body": "No text to process"}
 
         logger.info(
-            f"[{message_id}] Processing message {message_unique_id}: {snippet}..."
+            f"[{message_id}] Processing message {message_unique_id}: {text[:50]}..."
         )
 
-        logger.info(f"Processing message from chat {chat_id}: {snippet}...")
-
-        # Handle commands
-        if text.startswith("/digest"):
-            digest_type = "daily" if "daily" in text.lower() else "weekly"
-            logger.info(f"[{message_id}] Generating {digest_type} digest")
-            summary = generate_digest_summary(digest_type)
-            if summary:
-                send_telegram_message(chat_id, summary)
-            else:
-                send_telegram_message(chat_id, "❌ Failed to generate digest")
-            return {"statusCode": 200, "body": "Digest command processed"}
-
-        if text.startswith("/open"):
-            logger.info(f"[{message_id}] Getting open items")
-            items = get_open_items(days_back=30)
-            if items:
-                # Group by category
-                categories = {}
-                for item in items:
-                    cat = item.get("category", "Unknown")
-                    if cat not in categories:
-                        categories[cat] = []
-                    categories[cat].append(item)
-
-                lines = ["📋 *Open Items*"]
-                for cat, cat_items in categories.items():
-                    lines.append(f"\n📂 *{cat}* ({len(cat_items)})")
-                    for item in cat_items:
-                        name = item.get("name", "No name")
-                        action = item.get("next_action", "No action")
-                        status = item.get("status", "open")
-                        status_emoji = "🔄" if status == "in-progress" else "📌"
-                        lines.append(f"{status_emoji} {name}")
-                        if action and action != "No action":
-                            lines.append(f"   → {action}")
-
-                send_telegram_message(chat_id, "\n".join(lines))
-            else:
-                send_telegram_message(chat_id, "📝 No open items found.")
-            return {"statusCode": 200, "body": "Open command processed"}
-
-        if text.startswith("/closed"):
-            logger.info(f"[{message_id}] Getting completed items")
-            items = get_completed_items(days_back=30)
-            if items:
-                # Group by category
-                categories = {}
-                for item in items:
-                    cat = item.get("category", "Unknown")
-                    if cat not in categories:
-                        categories[cat] = []
-                    categories[cat].append(item)
-
-                lines = ["✅ *Recently Completed*"]
-                for cat, cat_items in categories.items():
-                    lines.append(f"\n📂 *{cat}* ({len(cat_items)})")
-                    for item in cat_items:
-                        name = item.get("name", "No name")
-                        lines.append(f"  ✓ {name}")
-
-                send_telegram_message(chat_id, "\n".join(lines))
-            else:
-                send_telegram_message(chat_id, "📝 No completed items found.")
-            return {"statusCode": 200, "body": "Closed command processed"}
-
-        if text.startswith("/debug count"):
-            logger.info(f"[{message_id}] Counting items")
-            counts = count_items()
-
-            if not counts:
-                send_telegram_message(
-                    chat_id, "❌ Failed to count items or table is empty."
+        for prefix, action in COMMAND_DISPATCH:
+            if prefix is None or text.startswith(prefix):
+                return action(
+                    text=text,
+                    send_telegram_message=send_telegram_message,
+                    chat_id=chat_id,
+                    table=table,
+                    ANTHROPIC_API_KEY=ANTHROPIC_API_KEY,
+                    process_message=process_message,
+                    save_to_dynamodb_with_embedding=save_to_dynamodb_with_embedding,
                 )
-            else:
-                lines = ["🔢 *Item Counts*"]
-                grand_total = 0
-                for cat, status_counts in sorted(counts.items()):
-                    cat_total = sum(status_counts.values())
-                    grand_total += cat_total
-                    lines.append(f"\n📂 *{cat}* (total: {cat_total})")
-                    for status, count in status_counts.items():
-                        status_label = status if status != "none" else "no status"
-                        lines.append(f"   • {status_label}: {count}")
-
-                lines.append(f"\n🏁 Grand total: {grand_total}")
-                send_telegram_message(chat_id, "\n".join(lines))
-
-            return {"statusCode": 200, "body": "Debug count command processed"}
-
-        if text.startswith("/debug backfill"):
-            logger.info(f"[{message_id}] Running GSI backfill")
-            send_telegram_message(
-                chat_id, "🔄 Backfilling GSI for items from last week..."
-            )
-
-            from datetime import timedelta
-
-            start_date = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-
-            categories = ["People", "Projects", "Ideas", "Admin"]
-            backfilled_by_status: dict[str, int] = {}
-            total_items = 0
-
-            for category in categories:
-                response = table.query(
-                    KeyConditionExpression="PK = :pk AND SK >= :start_date",
-                    ExpressionAttributeValues={
-                        ":pk": f"CATEGORY#{category}",
-                        ":start_date": start_date,
-                    },
-                )
-                items = response.get("Items", [])
-
-                for item in items:
-                    status = item.get("status", "none")
-                    backfilled_by_status[status] = (
-                        backfilled_by_status.get(status, 0) + 1
-                    )
-                    total_items += 1
-                    table.put_item(Item=item)
-
-            if total_items == 0:
-                send_telegram_message(chat_id, "📝 No items found from last week.")
-                return {"statusCode": 200, "body": "Backfill command processed"}
-
-            lines = ["✅ *Backfill Complete*"]
-            lines.append(f"\nBackfilled {total_items} items from last week.")
-            lines.append("\n📊 By status:")
-            for status, count in sorted(backfilled_by_status.items()):
-                status_label = status if status != "none" else "no status"
-                lines.append(f"   • {status_label}: {count}")
-
-            send_telegram_message(chat_id, "\n".join(lines))
-            return {"statusCode": 200, "body": "Backfill command processed"}
-
-        if text.startswith("/debug duplicates-auto"):
-            logger.info(f"[{message_id}] Auto-deduplicating items")
-            send_telegram_message(
-                chat_id, "🔄 Auto-deduplicating items from last month..."
-            )
-
-            # Query items from last month
-            from datetime import timedelta
-
-            start_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-
-            categories = ["People", "Projects", "Ideas", "Admin"]
-            all_items = []
-
-            for category in categories:
-                response = table.query(
-                    KeyConditionExpression="PK = :pk AND SK >= :start_date",
-                    ExpressionAttributeValues={
-                        ":pk": f"CATEGORY#{category}",
-                        ":start_date": start_date,
-                    },
-                )
-                for item in response.get("Items", []):
-                    item["id"] = item["SK"].split("#")[0]
-                    all_items.append(item)
-
-            if len(all_items) < 2:
-                send_telegram_message(chat_id, "📝 Not enough items to deduplicate.")
-                return {"statusCode": 200, "body": "Duplicates-auto command processed"}
-
-            # Build summary for AI
-            items_summary = []
-            for item in all_items:
-                summary = f"[ID:{item['id']}] {item.get('category', 'N/A')}: {item.get('name', 'N/A')} ({item.get('status', 'open')})"
-                if item.get("notes"):
-                    summary += f" - notes: {item['notes'][:100]}"
-                items_summary.append(summary)
-
-            items_text = "\n".join(items_summary)
-
-            # Ask AI to find duplicates and recommend actions
-            auto_prompt = f"""Analyze these items and automatically deduplicate. Return JSON with actions to take:
-
-{items_text}
-
-Return JSON:
-{{
-    "actions": [
-        {{
-            "action": "merge|delete|keep",
-            "from_id": "ID of item to merge/delete (or null)",
-            "into_id": "ID of item to merge into (or null)",
-            "reason": "why this action"
-        }}
-    ],
-    "summary": "brief summary of what was done"
-}}
-
-Rules:
-- If items have same name and one is completed, merge completed into open and delete completed
-- If items are clearly about same topic, merge newer into older, delete newer
-- Keep items that are clearly different topics
-- Use "keep" action to mark items as not duplicates"""
-
-            # Try AI classification
-            result = None
-            if ANTHROPIC_API_KEY:
-                try:
-                    import anthropic
-
-                    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-                    response = client.messages.create(
-                        model="claude-sonnet-4-20250514",
-                        max_tokens=2048,
-                        messages=[{"role": "user", "content": auto_prompt}],
-                    )
-                    content = response.content[0].text.strip()
-                    if content.startswith("```json"):
-                        content = content[7:-3].strip()
-                    result = json.loads(content)
-                except Exception as e:
-                    logger.error(f"AI auto-deduplication failed: {e}")
-
-            if not result or not result.get("actions"):
-                send_telegram_message(chat_id, "📊 No automatic deduplication needed.")
-                return {"statusCode": 200, "body": "Duplicates-auto command processed"}
-
-            # Execute actions
-            merged_count = 0
-            deleted_count = 0
-            kept_count = 0
-
-            # Build ID lookup map
-            id_to_item = {}
-            for item in all_items:
-                id_to_item[item["id"]] = item
-
-            for action in result["actions"]:
-                action_type = action.get("action")
-                from_id = action.get("from_id")
-                into_id = action.get("into_id")
-
-                if action_type == "merge" and from_id and into_id:
-                    from_item = id_to_item.get(from_id)
-                    into_item = id_to_item.get(into_id)
-                    if from_item and into_item:
-                        # Merge: append notes, copy status, delete from
-                        merged_notes = []
-                        if from_item.get("notes"):
-                            merged_notes.append(
-                                f"[From {from_id}]: {from_item['notes']}"
-                            )
-                        if into_item.get("notes"):
-                            merged_notes.append(f"[Original]: {into_item['notes']}")
-
-                        table.update_item(
-                            Key={"PK": into_item["PK"], "SK": into_item["SK"]},
-                            UpdateExpression="SET #notes = :notes, #status = :status",
-                            ExpressionAttributeNames={
-                                "#notes": "notes",
-                                "#status": "status",
-                            },
-                            ExpressionAttributeValues={
-                                ":notes": "\n\n".join(merged_notes)
-                                if merged_notes
-                                else into_item.get("notes"),
-                                ":status": from_item.get(
-                                    "status", into_item.get("status", "open")
-                                ),
-                            },
-                        )
-                        table.delete_item(
-                            Key={"PK": from_item["PK"], "SK": from_item["SK"]}
-                        )
-                        merged_count += 1
-
-                elif action_type == "delete" and from_id:
-                    from_item = id_to_item.get(from_id)
-                    if from_item:
-                        table.delete_item(
-                            Key={"PK": from_item["PK"], "SK": from_item["SK"]}
-                        )
-                        deleted_count += 1
-
-                elif action_type == "keep":
-                    kept_count += 1
-
-            # Report results
-            lines = ["✅ *Auto-Deduplication Complete*"]
-            lines.append(f"\n📊 {result.get('summary', 'Done')}")
-            lines.append(f"\n• Merged: {merged_count}")
-            lines.append(f"• Deleted: {deleted_count}")
-            lines.append(f"• Kept: {kept_count}")
-
-            send_telegram_message(chat_id, "\n".join(lines))
-            return {"statusCode": 200, "body": "Duplicates-auto command processed"}
-
-        if text.startswith("/debug duplicates"):
-            logger.info(f"[{message_id}] Finding duplicate items")
-            send_telegram_message(
-                chat_id, "🔍 Analyzing items from last month for duplicates..."
-            )
-
-            # Query items from last month
-            from datetime import timedelta
-
-            start_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-
-            categories = ["People", "Projects", "Ideas", "Admin"]
-            all_items = []
-
-            for category in categories:
-                response = table.query(
-                    KeyConditionExpression="PK = :pk AND SK >= :start_date",
-                    ExpressionAttributeValues={
-                        ":pk": f"CATEGORY#{category}",
-                        ":start_date": start_date,
-                    },
-                )
-                for item in response.get("Items", []):
-                    item["id"] = item["SK"].split("#")[0]  # Use timestamp as short ID
-                    all_items.append(item)
-
-            if len(all_items) < 2:
-                send_telegram_message(
-                    chat_id, "📝 Not enough items to find duplicates."
-                )
-                return {"statusCode": 200, "body": "Duplicates command processed"}
-
-            # Build summary for AI
-            items_summary = []
-            for item in all_items:
-                summary = f"[ID:{item['id']}] {item.get('category', 'N/A')}: {item.get('name', 'N/A')} ({item.get('status', 'open')})"
-                if item.get("next_action"):
-                    summary += f" - next: {item['next_action']}"
-                items_summary.append(summary)
-
-            items_text = "\n".join(items_summary)
-
-            # Ask AI to find duplicates
-            duplicate_prompt = f"""Analyze these items and find potential duplicates (items with similar names or topics):
-
-{items_text}
-
-Look for:
-- Items with the same or very similar names
-- Items that appear to be about the same topic
-- Multiple items that should be consolidated
-
-Return JSON with this structure:
-{{
-    "groups": [
-        {{
-            "reason": "explanation of why these are duplicates",
-            "items": [{{"id": "item ID", "name": "item name", "category": "category"}}]
-        }}
-    ],
-    "total_items": total items analyzed,
-    "potential_duplicates": count of items in duplicate groups
-}}
-
-Only group items that are clearly duplicates. Return empty groups if items seem unique."""
-
-            # Try AI classification
-            duplicates = None
-            if ANTHROPIC_API_KEY:
-                try:
-                    import anthropic
-
-                    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-                    response = client.messages.create(
-                        model="claude-sonnet-4-20250514",
-                        max_tokens=2048,
-                        messages=[{"role": "user", "content": duplicate_prompt}],
-                    )
-                    content = response.content[0].text.strip()
-                    if content.startswith("```json"):
-                        content = content[7:-3].strip()
-                    duplicates = json.loads(content)
-                except Exception as e:
-                    logger.error(f"AI duplicate detection failed: {e}")
-
-            if not duplicates or not duplicates.get("groups"):
-                send_telegram_message(
-                    chat_id,
-                    f"📊 Analyzed {len(all_items)} items. No obvious duplicates found.",
-                )
-                return {"statusCode": 200, "body": "Duplicates command processed"}
-
-            # Send potential duplicates to user
-            lines = ["🔍 *Potential Duplicates Found*\n"]
-            lines.append(
-                f"Found {duplicates['potential_duplicates']} potential duplicates across {len(duplicates['groups'])} groups:\n"
-            )
-
-            for i, group in enumerate(duplicates["groups"], 1):
-                lines.append(f"*Group {i}:* {group['reason']}")
-                for item in group["items"]:
-                    lines.append(
-                        f"  • [ID:{item['id']}] {item['name']} ({item['category']})"
-                    )
-                lines.append("")
-
-            lines.append("---")
-            lines.append("*Resolution options:*")
-            lines.append(
-                "  `/merge FROM_ID INTO_ID` - Merge FROM into INTO, keep both data"
-            )
-            lines.append("  `/delete ID` - Delete this item")
-            lines.append("  `/keep ID ID...` - Mark these as not duplicates")
-
-            send_telegram_message(chat_id, "\n".join(lines))
-            return {"statusCode": 200, "body": "Duplicates command processed"}
-
-        if text.startswith("/merge "):
-            # Parse: /merge FROM_ID INTO_ID
-            parts = text.split()[1:]
-            if len(parts) != 2:
-                send_telegram_message(chat_id, "Usage: /merge FROM_ID INTO_ID")
-                return {"statusCode": 200, "body": "Merge command processed"}
-
-            from_id, into_id = parts
-            logger.info(f"[{message_id}] Merging {from_id} into {into_id}")
-
-            # Find both items
-            from_item = None
-            into_item = None
-            for item in table.scan().get("Items", []):
-                sk_prefix = item.get("SK", "")
-                if sk_prefix.startswith(from_id + "#"):
-                    from_item = item
-                elif sk_prefix.startswith(into_id + "#"):
-                    into_item = item
-
-            if not from_item:
-                send_telegram_message(chat_id, f"❌ Item {from_id} not found")
-                return {"statusCode": 200, "body": "Merge command processed"}
-
-            if not into_item:
-                send_telegram_message(chat_id, f"❌ Item {into_id} not found")
-                return {"statusCode": 200, "body": "Merge command processed"}
-
-            # Merge: update into_item with from_item's data, delete from_item
-            merged_notes = []
-            if from_item.get("notes"):
-                merged_notes.append(f"[From {from_id}]: {from_item['notes']}")
-            if into_item.get("notes"):
-                merged_notes.append(f"[Original]: {into_item['notes']}")
-
-            table.update_item(
-                Key={"PK": into_item["PK"], "SK": into_item["SK"]},
-                UpdateExpression="SET #notes = :notes, #status = :status",
-                ExpressionAttributeNames={"#notes": "notes", "#status": "status"},
-                ExpressionAttributeValues={
-                    ":notes": "\n\n".join(merged_notes)
-                    if merged_notes
-                    else into_item.get("notes"),
-                    ":status": from_item.get("status", into_item.get("status", "open")),
-                },
-            )
-
-            table.delete_item(Key={"PK": from_item["PK"], "SK": from_item["SK"]})
-
-            send_telegram_message(chat_id, f"✅ Merged {from_id} into {into_id}")
-            return {"statusCode": 200, "body": "Merge command processed"}
-
-        if text.startswith("/delete "):
-            # Parse: /delete ID
-            parts = text.split()
-            if len(parts) != 2:
-                send_telegram_message(chat_id, "Usage: /delete ID")
-                return {"statusCode": 200, "body": "Delete command processed"}
-
-            item_id = parts[1]
-            logger.info(f"[{message_id}] Deleting item {item_id}")
-
-            # Find and delete item
-            for item in table.scan().get("Items", []):
-                if item.get("SK", "").startswith(item_id + "#"):
-                    table.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
-                    send_telegram_message(chat_id, f"✅ Deleted item {item_id}")
-                    return {"statusCode": 200, "body": "Delete command processed"}
-
-            send_telegram_message(chat_id, f"❌ Item {item_id} not found")
-            return {"statusCode": 200, "body": "Delete command processed"}
-
-        # Process and classify message
-        result = process_message(text)
-
-        # Save to DynamoDB using embedding similarity matching
-        if result["confidence"] >= 60:
-            save_result = save_to_dynamodb_with_embedding(result)
-
-            if save_result["action"] == "updated":
-                reply = f"🔄 Updated existing *{save_result['category']}* item (similarity: {save_result['similarity']:.0%})"
-            else:
-                reply = f"✅ Saved as *{save_result['category']}* (confidence: {result['confidence']}%)"
-
-            if result.get("name"):
-                reply += f"\n📝 *{result['name']}*"
-
-            send_telegram_message(chat_id, reply)
-            logger.info(f"Successfully processed and saved message: {save_result}")
-        else:
-            reply = f"⚠️ Low confidence ({result['confidence']}%) - not saved. Please rephrase `{snippet}`."
-            send_telegram_message(chat_id, reply)
-
-        return {"statusCode": 200, "body": "Message processed successfully"}
 
     except Exception as e:
         logger.error(f"Error processing webhook: {e}", exc_info=True)
