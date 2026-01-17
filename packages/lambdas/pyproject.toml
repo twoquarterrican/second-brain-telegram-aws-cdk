@@ -16,6 +16,12 @@ dependencies = [
     "dotenv==0.9.9",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "moto>=4.0.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
