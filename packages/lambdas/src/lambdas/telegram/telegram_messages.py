@@ -1,5 +1,8 @@
 import requests
+
 from lambdas.processor import TELEGRAM_BOT_TOKEN, logger
+
+
 def send_telegram_message(chat_id: str, text: str) -> bool:
     """Send message via Telegram bot API."""
     try:

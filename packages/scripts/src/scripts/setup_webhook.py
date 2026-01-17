@@ -55,9 +55,10 @@ def telegram_api_call(
 
 
 def set_webhook(
-    bot_token: str, webhook_url: str, secret_token: Optional[str] = None
+    bot_token: str, webhook_url: str | None, secret_token: Optional[str] = None
 ) -> Tuple[bool, str]:
     """Set Telegram webhook."""
+    assert webhook_url, "Webhook URL must be provided"
     payload = {"url": webhook_url}
     if secret_token:
         payload["secret_token"] = secret_token

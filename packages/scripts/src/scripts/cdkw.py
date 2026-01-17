@@ -7,7 +7,7 @@ Usage: uv run cdkw [cdk_args...]
 import subprocess
 import sys
 
-from common.environments import cdk_src_dir
+from common.environments import cdk_dir, cdk_src_dir
 
 
 def run_cdk(cdk_args):
@@ -35,12 +35,6 @@ def deploy_main():
 
     cdk_args = sys.argv[1:]
 
-    # Step 1: Build layer
-    if not build_layer():
-        print("❌ Failed to build layer, aborting CDK deployment")
-        return 1
-
-    # Step 2: Run CDK
     if not run_cdk(cdk_args):
         print(f"❌ CDK command failed: {' '.join(cdk_args)}")
         return 1
