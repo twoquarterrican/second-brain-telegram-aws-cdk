@@ -102,8 +102,7 @@ class SecondBrainStack(Stack):
                 "bedrock:ListFoundationModels",
             ],
             resources=[
-                "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v1",
-                "arn:aws:bedrock:*::foundation-model/*",
+                "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1",
             ],
         )
         # noinspection PyTypeChecker
@@ -247,7 +246,7 @@ class SecondBrainStack(Stack):
                 effect=iam.Effect.ALLOW,
                 actions=["bedrock:InvokeModel", "bedrock:ListFoundationModels"],
                 resources=[
-                    "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v1",
+                    "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1",
                 ],
             )
         )
