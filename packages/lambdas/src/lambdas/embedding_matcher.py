@@ -106,7 +106,7 @@ def find_similar_item(
         embedding = item.get("embedding")
         if not embedding:
             continue
-        score = cosine_similarity(message_embedding, list(embedding))
+        score = cosine_similarity(message_embedding, [float(e) for e in embedding])
         if score > best_score:
             best_score = score
             best_item = item
@@ -198,7 +198,7 @@ def save_with_embedding_matching(
         return {
             "action": "updated",
             "sk": similar_item["SK"],
-            "similarity": cosine_similarity(embedding, list(similar_item["embedding"])),
+            "similarity": cosine_similarity(embedding, [float(e) for e in similar_item["embedding"]]),
             "category": category,
         }
 

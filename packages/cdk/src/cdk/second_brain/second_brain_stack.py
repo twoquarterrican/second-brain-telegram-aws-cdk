@@ -3,6 +3,7 @@ from aws_cdk import (
     Stack,
     aws_lambda as _lambda,
     aws_dynamodb as dynamodb,
+    aws_s3 as s3,
     aws_events as events,
     aws_events_targets as targets,
     aws_iam as iam,
@@ -46,10 +47,20 @@ class SecondBrainStack(Stack):
             projection_type=dynamodb.ProjectionType.ALL,
         )
 
+        # S3 Bucket for vector storage
+        vector_bucket = s3.Bucket(
+            self,
+            "SecondBrainVectorBucket",
+            bucket_name=f"second-brain-vectors-{self.account}-{self.region}",
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+        )
+
         # Environment variables for Lambdas
         lambda_env = {
             "DDB_TABLE_NAME": table.table_name,
             "SECOND_BRAIN_TABLE_NAME": table.table_name,
+            "VECTOR_BUCKET_NAME": vector_bucket.bucket_name,
         }
         for key in [
             "ANTHROPIC_API_KEY",
@@ -94,11 +105,15 @@ class SecondBrainStack(Stack):
         )
 
         # Allow Bedrock InvokeModel for Titan embeddings (primary) and other models (fallback)
-        invoke_model = [iam.PolicyStatement(
-            effect=iam.Effect.ALLOW,
-            actions=["bedrock:InvokeModel"],
-            resources=["arn:aws:bedrock:us-east-2::foundation-model/amazon.titan-embed-text-v2:0"],
-        )]
+        invoke_model = [
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["bedrock:InvokeModel"],
+                resources=[
+                    "arn:aws:bedrock:us-east-2::foundation-model/amazon.titan-embed-text-v2:0"
+                ],
+            )
+        ]
         # noinspection PyTypeChecker
         processor_lambda = _lambda.Function(
             self,
@@ -115,6 +130,7 @@ class SecondBrainStack(Stack):
             ],
         )
         table.grant_read_write_data(processor_lambda)
+        vector_bucket.grant_read_write(processor_lambda)
 
         # Enable Function URL for Processor
         function_url = processor_lambda.add_function_url(
@@ -135,6 +151,7 @@ class SecondBrainStack(Stack):
             initial_policy=[*invoke_model],
         )
         table.grant_read_write_data(digest_lambda)
+        vector_bucket.grant_read(digest_lambda)
 
         # Task Linker Lambda
         # noinspection PyTypeChecker
@@ -173,7 +190,7 @@ class SecondBrainStack(Stack):
         weekly_rule.add_target(targets.LambdaFunction(digest_lambda))
 
         # Role for triggering lambdas (assumed by scripts/automation)
-        trigger_role = self._create_trigger_role( table )
+        trigger_role = self._create_trigger_role(table)
 
         # Outputs
         CfnOutput(
@@ -184,6 +201,12 @@ class SecondBrainStack(Stack):
         )
         CfnOutput(
             self, "TableName", value=table.table_name, description="DynamoDB table name"
+        )
+        CfnOutput(
+            self,
+            "VectorBucketName",
+            value=vector_bucket.bucket_name,
+            description="S3 bucket for vector storage",
         )
         CfnOutput(
             self,
@@ -200,7 +223,7 @@ class SecondBrainStack(Stack):
 
     def _create_trigger_role(
         self,
-            table: dynamodb.Table,
+        table: dynamodb.Table,
     ) -> iam.Role:
         """Create a role that can be assumed to invoke lambdas."""
 
@@ -219,7 +242,7 @@ class SecondBrainStack(Stack):
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
                 actions=["bedrock:ListFoundationModels"],
-                resources=[ "*"],
+                resources=["*"],
             )
         )
         trigger_role.add_to_policy(
@@ -245,6 +268,22 @@ class SecondBrainStack(Stack):
                 resources=[
                     table.table_arn,
                     f"{table.table_arn}/index/*",
+                ],
+            )
+        )
+
+        # Allow S3 operations on vector bucket
+        trigger_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:ListBucket",
+                ],
+                resources=[
+                    vector_bucket.bucket_arn,
+                    f"{vector_bucket.bucket_arn}/*",
                 ],
             )
         )
