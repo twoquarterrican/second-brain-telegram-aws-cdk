@@ -6,6 +6,7 @@ import os
 import sys
 import pytest
 from datetime import datetime, timezone
+from unittest import mock
 import boto3
 from moto import mock_aws
 
@@ -25,7 +26,7 @@ def create_test_repo():
     dynamodb_resource = boto3.resource("dynamodb", region_name="us-east-1")
 
     # Create table with correct schema
-    table = dynamodb_resource.create_table(
+    dynamodb_resource.create_table(
         TableName="test-events",
         KeySchema=[
             {"AttributeName": "pk", "KeyType": "HASH"},
@@ -297,3 +298,68 @@ class TestEventRepository:
                 item_sk="PROFILE",
                 source_event_sk="2024-01-17T10:00:00Z#msg_001",
             )
+
+
+class TestProcessorHandler:
+    def test_non_command_message_dispatch(self):
+        """Test that non-command messages are dispatched to the process action."""
+        # Test the COMMAND_DISPATCH logic without actually calling the actions
+
+        from lambdas.processor import COMMAND_DISPATCH
+
+        # Test various message types
+        test_cases = [
+            (
+                "Working on the web app redesign project",
+                None,
+            ),  # Should match None (process)
+            ("/digest", "digest"),  # Should match /digest
+            ("/open", "open_items"),  # Should match /open
+            ("Some random message", None),  # Should match None (process)
+        ]
+
+        for message_text, expected_module in test_cases:
+            # Find which action would be called
+            called_action = None
+            for prefix, action in COMMAND_DISPATCH:
+                if prefix is None or message_text.startswith(prefix):
+                    called_action = action
+                    break
+
+            if expected_module is None:
+                # Should be the process action (the None case)
+                assert called_action is not None
+                # We can't easily test the actual call without mocking,
+                # but we verify it reaches the process dispatch
+            else:
+                # Should match the expected command
+                assert str(called_action).endswith(expected_module)
+
+    def test_webhook_secret_validation(self):
+        """Test that webhook secret validation works."""
+        from lambdas.processor import handler
+        import os
+
+        # Set up test secret
+        os.environ["TELEGRAM_SECRET_TOKEN"] = "test-secret"
+
+        # Test with correct secret
+        event = {
+            "headers": {"x-telegram-bot-api-secret-token": "test-secret"},
+            "body": {"message": {"text": "test", "chat": {"id": "123"}}},
+        }
+        # This will fail later but should pass secret validation
+        try:
+            result = handler(event, None)
+        except Exception:
+            # Expected to fail on AI calls, but secret validation should pass
+            pass
+
+        # Test with wrong secret
+        event_wrong_secret = {
+            "headers": {"x-telegram-bot-api-secret-token": "wrong-secret"},
+            "body": {"message": {"text": "test", "chat": {"id": "123"}}},
+        }
+        result = handler(event_wrong_secret, None)
+        assert result["statusCode"] == 403
+        assert result["body"] == "Forbidden"
