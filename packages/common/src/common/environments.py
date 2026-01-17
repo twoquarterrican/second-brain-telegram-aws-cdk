@@ -15,6 +15,18 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=(Path(__file__).parents[1] / "env.local"))
 
 
+def get_env(key: str, required: bool = True, default: str | None = None) -> str | None:
+    """Get environment variable or raise exception if not set."""
+    value = os.getenv(key, default)
+    if required and value is None:
+        raise ValueError(f"{key} environment variable not set")
+    if value is not None:
+        value = value.strip()
+    if value in ["", "-"] or value is None:
+        return None
+    return value
+
+
 @cache
 def get_dynamo_client(second_brain_trigger_role: bool = False):
     """Get DynamoDB client with assumed role credentials."""

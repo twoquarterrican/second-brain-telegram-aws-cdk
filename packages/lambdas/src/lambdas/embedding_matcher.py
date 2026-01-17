@@ -152,7 +152,7 @@ def find_similar_item(
         queryVector={
             "float32": message_embedding,
         },
-        filter= {"key": "category", "value": category, "comparisonOperator": "EQUALS"},
+        filter={"key": "category", "value": category, "comparisonOperator": "EQUALS"},
         returnDistance=True,
         returnMetadata=True,
     )
@@ -226,7 +226,7 @@ def create_item(
     table.put_item(Item=item)
 
     index_vector(
-        pk=item["PK"],
+        pk=str(item["PK"]),
         sk=sk,
         embedding=embedding,
         metadata={

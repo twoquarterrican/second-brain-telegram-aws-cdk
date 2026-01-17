@@ -10,6 +10,8 @@ Functions:
     log_warning(message) - Log warning and notify via Telegram
 """
 
+from typing import Optional
+
 import logging
 import os
 
@@ -39,7 +41,7 @@ def _send_telegram(message: str):
         return False
 
 
-def log_error(message: str, cause: str = None):
+def log_error(message: str, cause: Optional[str] = None):
     """Log error to CloudWatch and notify via Telegram.
 
     Args:
