@@ -4,16 +4,16 @@ Telegram Webhook CLI for Second Brain using Click + InquirerPy.
 Provides both traditional CLI commands and interactive prompts.
 """
 
-import os
-import sys
-import subprocess
 import json
-from typing import Optional, Tuple, Any
+import os
+import subprocess
+import sys
+from typing import Any, Optional, Tuple
 
 import click
-
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
+
 import common.environments
 
 

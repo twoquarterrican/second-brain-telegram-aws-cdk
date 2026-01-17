@@ -19,17 +19,17 @@ Environment variables:
     AWS_PROFILE: AWS profile for credentials
 """
 
+import json
+import logging
 import os
 import sys
 import time
-import json
-import logging
-from decimal import Decimal
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
+from common.bedrock_embeddings import EMBEDDING_MODEL, embed_texts
 from common.environments import get_table
-from common.bedrock_embeddings import embed_texts, EMBEDDING_MODEL
 
 # Constants
 CHECKPOINT_FILE = "backfill_checkpoint.json"

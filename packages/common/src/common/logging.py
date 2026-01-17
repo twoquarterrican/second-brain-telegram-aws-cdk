@@ -11,8 +11,9 @@ Functions:
 """
 
 import logging
-import requests
 import os
+
+import requests
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

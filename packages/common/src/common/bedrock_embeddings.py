@@ -5,12 +5,12 @@ Provides embeddings using AWS Bedrock Titan Text Embeddings model
 with OpenAI fallback for local development or when Bedrock is unavailable.
 """
 
-import os
 import json
 import logging
+import os
 import time
-from typing import Optional, Dict
 from functools import lru_cache
+from typing import Dict, Optional
 
 import boto3
 from botocore.exceptions import ClientError

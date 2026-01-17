@@ -1,7 +1,6 @@
 """Debug count action - count items by category and status."""
 
 import boto3
-from datetime import datetime, timezone
 
 
 dynamodb = boto3.resource("dynamodb")

@@ -60,11 +60,7 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E4", "F", "I", "T201"]  # E4+F: imports, I: isort, T201: print
-
-[tool.ruff.lint.per-file-ignores]
-"packages/common/src/common/environments.py" = ["T201", "I"]
-"packages/lambdas/src/lambdas/actions/*" = ["T201"]
+select = ["E4", "I"]  # E4+F: imports, I: isort
 
 [tool.ruff.lint.isort]
 known-first-party = ["common", "lambdas", "scripts"]

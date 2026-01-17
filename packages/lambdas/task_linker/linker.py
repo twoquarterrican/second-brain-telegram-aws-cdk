@@ -39,7 +39,6 @@ def link_task(user_id: str, message_text: str, action: str) -> dict:
 
 def handler(event, context):
     """AWS Lambda handler for task linking."""
-    import os
     import json
 
     user_id = event.get("user_id", "default_user")

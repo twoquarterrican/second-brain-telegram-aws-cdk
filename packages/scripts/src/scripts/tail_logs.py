@@ -3,15 +3,16 @@
 Tail CloudWatch logs for Second Brain Lambda functions
 """
 
+import os
+import sys
 from datetime import datetime, timedelta, timezone
+from typing import Iterable, Optional
+
 import boto3
 import click
-from datetime import datetime, timedelta
-from typing import Optional, Iterable
-import sys
-import os
-from common.environments import get_boto3_client
 from InquirerPy import inquirer
+
+from common.environments import get_boto3_client
 
 
 def get_lambda_functions() -> Iterable[str]:

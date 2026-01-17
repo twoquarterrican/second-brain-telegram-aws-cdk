@@ -12,8 +12,10 @@ from typing import Optional, Dict, Any, List
 import boto3
 from botocore.exceptions import ClientError
 
+from common.environments import get_vector_bucket_name, get_vector_index_name
+
 dynamodb = boto3.resource("dynamodb")
-s3control = boto3.client("s3control")
+s3vectors = boto3.client("s3vectors")
 
 table_name = os.environ.get("DDB_TABLE_NAME", "SecondBrain")
 vector_index_name = os.environ.get("S3_VECTOR_INDEX_NAME", "SecondBrainItemsIndex")
@@ -100,7 +102,7 @@ def index_vector(
     """Index a vector in S3 Vectors."""
     vector_id = _make_vector_id(pk, sk)
 
-    s3control.batch_put_vector(
+    s3vectors.batch_put_vector(
         VectorIndexName=vector_index_name,
         Vectors=[
             {
@@ -123,7 +125,7 @@ def delete_vector(pk: str, sk: str) -> None:
     """Delete a vector from S3 Vectors."""
     vector_id = _make_vector_id(pk, sk)
 
-    s3control.batch_delete_vector(
+    s3vectors.batch_delete_vector(
         VectorIndexName=vector_index_name,
         VectorIds=[vector_id],
     )
@@ -145,16 +147,16 @@ def find_similar_item(
     Raises:
         ClientError: If S3 Vectors search fails
     """
-    response = s3control.search_vectors(
-        VectorIndexName=vector_index_name,
-        VectorQuery={
-            "vector": message_embedding,
-            "k": 50,
-            "filters": [
-                {"key": "category", "value": category, "comparisonOperator": "EQUALS"}
-            ],
+    response = s3vectors.query_vectors(
+        vectorBucketName=get_vector_bucket_name(),
+        indexName=get_vector_index_name(),
+        topK=5,
+        queryVector={
+            "float32": message_embedding,
         },
-        metric="COSINE",
+        filter= {"key": "category", "value": category, "comparisonOperator": "EQUALS"},
+        returnDistance=True,
+        returnMetadata=True,
     )
 
     hits = response.get("hits", [])

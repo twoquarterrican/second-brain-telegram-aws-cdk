@@ -4,9 +4,10 @@ CDK wrapper for Second Brain project
 Usage: uv run cdkw [cdk_args...]
 """
 
-import sys
 import subprocess
+import sys
 from pathlib import Path
+
 from common.environments import cdk_src_dir, layer_dir
 
 

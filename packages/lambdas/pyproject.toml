@@ -19,3 +19,7 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.ruff.lint.flake8-tidy-imports]
+banned-module-level-imports = [
+    "cdk",
+]

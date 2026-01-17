@@ -78,8 +78,8 @@ Rules:
             if content.startswith("```json"):
                 content = content[7:-3].strip()
             result = json.loads(content)
-        except Exception as e:
-            send_telegram_message(chat_id, f"❌ AI auto-deduplication failed: {{e}}")
+        except Exception:
+            send_telegram_message(chat_id, "❌ AI auto-deduplication failed: {e}")
 
     if not result or not result.get("actions"):
         send_telegram_message(chat_id, "📊 No automatic deduplication needed.")

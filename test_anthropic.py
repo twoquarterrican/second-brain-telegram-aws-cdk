@@ -3,8 +3,8 @@
 Unit test to verify anthropic import works with pinned version
 """
 
-import sys
 import os
+import sys
 
 
 def test_anthropic_import():

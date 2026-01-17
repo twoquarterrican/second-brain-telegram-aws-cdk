@@ -1,19 +1,33 @@
-from aws_cdk import (
-    Duration,
-    Stack,
-    aws_lambda as _lambda,
-    aws_dynamodb as dynamodb,
-    aws_s3 as s3,
-    aws_events as events,
-    aws_events_targets as targets,
-    aws_iam as iam,
-    CfnOutput,
-    RemovalPolicy,
-    BundlingOptions,
-)
 import os
+
+from aws_cdk import (
+    BundlingOptions,
+    CfnOutput,
+    Duration,
+    RemovalPolicy,
+    Stack,
+)
+from aws_cdk import (
+    aws_dynamodb as dynamodb,
+)
+from aws_cdk import (
+    aws_events as events,
+)
+from aws_cdk import (
+    aws_events_targets as targets,
+)
+from aws_cdk import (
+    aws_iam as iam,
+)
+from aws_cdk import (
+    aws_lambda as _lambda,
+)
+from aws_cdk import (
+    aws_s3 as s3,
+)
 from constructs import Construct
-from common.environments import lambdas_dir, lambdas_src_dir, common_dir
+
+from common.environments import common_dir, lambdas_dir, lambdas_src_dir
 
 
 class SecondBrainStack(Stack):

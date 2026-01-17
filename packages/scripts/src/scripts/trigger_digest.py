@@ -4,20 +4,21 @@ CLI to trigger the digest Lambda function for Second Brain.
 Supports both CLI flags and interactive prompts.
 """
 
+import json
 import os
 import sys
-import json
-import click
 from typing import Optional
+
+import click
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 
 from common.environments import (
-    get_aws_session,
-    find_lambda_function,
-    get_trigger_role_arn,
     assume_role,
     assume_second_brain_trigger_role,
+    find_lambda_function,
+    get_aws_session,
+    get_trigger_role_arn,
 )
 
 

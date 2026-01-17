@@ -1,12 +1,11 @@
+import os
 import json
 import logging
 import boto3
-from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import requests
 from anthropic.types import MessageParam
 
-from lambdas.digest import generate_digest_summary, get_open_items, get_completed_items
 from lambdas.actions import (
     digest,
     open_items,
@@ -241,7 +240,7 @@ def handler(event, _context):
     expected_secret = TELEGRAM_SECRET_TOKEN
 
     if expected_secret and received_secret != expected_secret:
-        logger.error(f"Invalid webhook secret")
+        logger.error("Invalid webhook secret")
         return {"statusCode": 403, "body": "Forbidden"}
 
     try:

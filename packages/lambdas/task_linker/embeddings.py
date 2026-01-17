@@ -7,7 +7,6 @@ with OpenAI text-embedding-3-small as fallback.
 
 import os
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

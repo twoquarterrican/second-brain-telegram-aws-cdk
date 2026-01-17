@@ -80,13 +80,13 @@ Only group items that are clearly duplicates. Return empty groups if items seem 
             if content.startswith("```json"):
                 content = content[7:-3].strip()
             duplicates = json.loads(content)
-        except Exception as e:
-            send_telegram_message(chat_id, f"❌ AI duplicate detection failed: {{e}}")
+        except Exception:
+            send_telegram_message(chat_id, "❌ AI duplicate detection failed: {e}")
 
     if not duplicates or not duplicates.get("groups"):
         send_telegram_message(
             chat_id,
-            f"📊 Analyzed {{len(all_items)}} items. No obvious duplicates found.",
+            "📊 Analyzed {len(all_items)} items. No obvious duplicates found.",
         )
         return {"statusCode": 200, "body": "Duplicates command processed"}
 

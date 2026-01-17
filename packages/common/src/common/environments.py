@@ -5,13 +5,12 @@ Reads configuration from env.json and provides boto3 session helpers
 """
 
 import os
-import boto3
-import click
-from typing import Optional
 from functools import cache
 from pathlib import Path
-from dotenv import load_dotenv
+from typing import Optional
 
+import boto3
+from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=(Path(__file__).parents[1] / "env.local"))
 
@@ -223,7 +222,7 @@ def assume_second_brain_trigger_role(
         )
 
     # Assume role if provided
-    click.echo(f"🔐 Assuming role: {role_arn}")
+    print(f"🔐 Assuming role: {role_arn}")
     sts = get_sts_client()
     response = sts.assume_role(
         RoleArn=role_arn,

@@ -14,8 +14,9 @@ Commands:
     completed       - Show completed items
 """
 
-import click
 import boto3
+import click
+
 from common.environments import get_table
 
 
