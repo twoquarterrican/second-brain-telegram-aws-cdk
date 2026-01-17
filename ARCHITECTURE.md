@@ -570,6 +570,22 @@ From AGENTS.md guidelines:
 - Built-in asset bundling for layers
 - Native AWS support without third-party state
 
+### 9.5 ADR-005: Event Sourcing with INBOX_LOG
+
+**Status**: In Progress
+
+**Context**: Need ability to replay all captured messages through new classification logic when adding features, improving AI models, or fixing bugs.
+
+**Decision**: Adopt event sourcing with INBOX_LOG as the source of truth. Categorized items become projections derived from events.
+
+**Rationale**:
+- Replayability: Add new features by replaying, not migrating
+- Complete audit trail: Nothing is ever lost
+- Schema evolution: New fields = replay, not migration scripts
+- Experimentation: Try different AI models, compare results
+
+**Full ADR**: [docs/adr/005-event-sourcing-inbox-log.md](./docs/adr/005-event-sourcing-inbox-log.md)
+
 ---
 
 ## 10. Quality Requirements

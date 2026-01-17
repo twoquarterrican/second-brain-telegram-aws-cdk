@@ -61,8 +61,8 @@ This document tracks implementation status against the architecture specificatio
 | original_text stored | ✅ | `embedding_matcher.py` | On every item |
 | confidence stored | ✅ | `embedding_matcher.py:create_item` | AI confidence score |
 | category stored | ✅ | `embedding_matcher.py:create_item` | Classification result |
-| Dedicated INBOX_LOG category | ❌ | - | Spec mentions but not implemented |
-| Log status (filed/needs_review/corrected) | ❌ | - | Not implemented |
+| Dedicated INBOX_LOG category | 🟡 | [ADR-005](./docs/adr/005-event-sourcing-inbox-log.md) | **In progress** - Event sourcing design accepted |
+| Log status (filed/needs_review/corrected) | 🟡 | [ADR-005](./docs/adr/005-event-sourcing-inbox-log.md) | Part of event sourcing design |
 | CloudWatch logging | ✅ | All Lambdas | Standard Python logging |
 
 ### 1.6 The Bouncer (Confidence Filter)
@@ -238,7 +238,7 @@ This document tracks implementation status against the architecture specificatio
 
 | Category | ✅ Done | 🟡 Partial | ❌ Missing |
 |----------|---------|------------|------------|
-| Building Blocks | 5 | 2 | 1 |
+| Building Blocks | 5 | 3 | 0 |
 | Engineering Principles | 10 | 2 | 0 |
 | Infrastructure | 12 | 2 | 0 |
 | Commands | 10 | 0 | 4 |
@@ -253,8 +253,13 @@ This document tracks implementation status against the architecture specificatio
 2. **`/fix` command** - Correct last classification (key trust mechanism)
 3. **Vector cleanup on delete** - `/delete` should remove from S3 Vectors
 4. **Unit tests** - No test coverage currently
-5. **INBOX_LOG audit trail** - Dedicated category for all inputs
-6. **`needs_review` queue** - Low confidence items should be queued, not discarded
+5. **`needs_review` queue** - Low confidence items should be queued, not discarded
+
+### In Progress
+
+| Feature | ADR | Status |
+|---------|-----|--------|
+| Event Sourcing with INBOX_LOG | [ADR-005](./docs/adr/005-event-sourcing-inbox-log.md) | Design accepted, implementation pending |
 
 ---
 
