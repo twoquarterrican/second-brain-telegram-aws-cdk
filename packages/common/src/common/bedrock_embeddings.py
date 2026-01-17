@@ -8,7 +8,7 @@ with OpenAI fallback for local development or when Bedrock is unavailable.
 import os
 import json
 import logging
-from typing import Optional
+from typing import Optional, Dict
 from functools import lru_cache
 
 import boto3
@@ -19,12 +19,16 @@ logger = logging.getLogger(__name__)
 BEDROCK_REGION = os.environ.get("AWS_BEDROCK_REGION", "us-east-1")
 BEDROCK_MODEL_ID = "amazon.titan-embed-text-v1"
 OPENAI_MODEL_ID = "text-embedding-3-small"
+EMBEDDING_MODEL = BEDROCK_MODEL_ID
+
+# Simple cache for embeddings
+_embedding_cache: Dict[str, list[float]] = {}
 
 
 @lru_cache(maxsize=1024)
 def _cached_embedding(text: str) -> Optional[list[float]]:
-    """Cached single text embedding to avoid duplicate API calls."""
-    return None
+    """Get cached embedding for a text string."""
+    return _embedding_cache.get(text)
 
 
 def embed_bedrock_titan(texts: list[str]) -> list[list[float]]:
@@ -64,7 +68,7 @@ def embed_bedrock_titan(texts: list[str]) -> list[list[float]]:
                 logger.warning(
                     f"Bedrock response missing embedding for text: {text[:50]}..."
                 )
-                embedding = [0.0] * 1536  # Return zero vector as fallback
+                embedding = [0.0]
 
             embeddings.append(embedding)
 
@@ -145,8 +149,7 @@ def embed_text(text: str, use_bedrock: bool = True) -> list[float]:
         Embedding vector (list of floats)
     """
     # Check cache first for identical texts
-    cache_key = text
-    cached = _cached_embedding(cache_key)
+    cached = _cached_embedding(text)
     if cached is not None:
         return cached
 
@@ -154,7 +157,6 @@ def embed_text(text: str, use_bedrock: bool = True) -> list[float]:
     embedding = embeddings[0]
 
     # Cache the result
-    _cached_embedding.cache_clear()
-    _cached_embedding(cache_key, embedding)
+    _embedding_cache[text] = embedding
 
     return embedding
