@@ -1,7 +1,7 @@
 """Embedding-based item matching for the processor Lambda.
 
-Uses vector embeddings to find similar items and update existing items
-instead of creating duplicates when similarity exceeds threshold.
+Uses S3 Vectors for similarity search to find similar items and update
+existing items instead of creating duplicates when similarity exceeds threshold.
 """
 
 import math
@@ -10,10 +10,15 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
 import boto3
-from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(os.environ.get("DDB_TABLE_NAME", "SecondBrain"))
+s3control = boto3.client("s3control")
+
+table_name = os.environ.get("DDB_TABLE_NAME", "SecondBrain")
+vector_index_name = os.environ.get("S3_VECTOR_INDEX_NAME", "SecondBrainItemsIndex")
+
+table = dynamodb.Table(table_name)
 
 
 def serialize_embedding(embedding: list[float]) -> list:
@@ -84,35 +89,91 @@ def _embed_openai(text: str) -> list[float]:
     return resp.data[0].embedding
 
 
-def list_items_with_embeddings(category: str) -> List[Dict[str, Any]]:
-    """List all items in a category that have embeddings."""
-    response = table.query(
-        KeyConditionExpression=Key("PK").eq(f"CATEGORY#{category}"),
+def _make_vector_id(pk: str, sk: str) -> str:
+    """Create a unique vector ID from DynamoDB keys."""
+    return f"{pk}#{sk}".replace("/", "_")
+
+
+def index_vector(
+    pk: str, sk: str, embedding: list[float], metadata: Dict[str, Any]
+) -> None:
+    """Index a vector in S3 Vectors."""
+    vector_id = _make_vector_id(pk, sk)
+
+    s3control.batch_put_vector(
+        VectorIndexName=vector_index_name,
+        Vectors=[
+            {
+                "Id": vector_id,
+                "Vector": embedding,
+                "Metadata": {
+                    "pk": pk,
+                    "sk": sk,
+                    "category": metadata.get("category", ""),
+                    "name": metadata.get("name", "") or "",
+                    "status": metadata.get("status", "open"),
+                    **metadata,
+                },
+            }
+        ],
     )
-    items = response.get("Items", [])
-    return [item for item in items if item.get("embedding")]
+
+
+def delete_vector(pk: str, sk: str) -> None:
+    """Delete a vector from S3 Vectors."""
+    vector_id = _make_vector_id(pk, sk)
+
+    s3control.batch_delete_vector(
+        VectorIndexName=vector_index_name,
+        VectorIds=[vector_id],
+    )
 
 
 def find_similar_item(
     category: str, message_embedding: list[float], threshold: float = 0.85
 ) -> Optional[Dict[str, Any]]:
-    """Find the most similar item in category with embedding above threshold."""
-    items = list_items_with_embeddings(category)
+    """Find the most similar item in category using S3 Vectors similarity search.
 
-    best_score = 0.0
-    best_item = None
+    Args:
+        category: The category to search within
+        message_embedding: The embedding vector to search with
+        threshold: Minimum similarity score (default 0.85)
 
-    for item in items:
-        embedding = item.get("embedding")
-        if not embedding:
-            continue
-        score = cosine_similarity(message_embedding, [float(e) for e in embedding])
-        if score > best_score:
-            best_score = score
-            best_item = item
+    Returns:
+        The most similar item dict, or None if no match above threshold
 
-    if best_item and best_score >= threshold:
-        return best_item
+    Raises:
+        ClientError: If S3 Vectors search fails
+    """
+    response = s3control.search_vectors(
+        VectorIndexName=vector_index_name,
+        VectorQuery={
+            "vector": message_embedding,
+            "k": 50,
+            "filters": [
+                {"key": "category", "value": category, "comparisonOperator": "EQUALS"}
+            ],
+        },
+        metric="COSINE",
+    )
+
+    hits = response.get("hits", [])
+    if not hits:
+        return None
+
+    best_hit = hits[0]
+    score = best_hit.get("score", 0.0)
+
+    if score >= threshold:
+        metadata = best_hit.get("metadata", {})
+        pk = metadata.get("pk")
+        sk = metadata.get("sk")
+
+        if pk and sk:
+            response = table.get_item(Key={"PK": pk, "SK": sk})
+            item = response.get("Item")
+            if item:
+                return item
 
     return None
 
@@ -144,11 +205,9 @@ def create_item(
     category: str, item_data: Dict[str, Any], embedding: list[float]
 ) -> str:
     """Create a new item with embedding."""
-    from datetime import datetime, timezone
     import uuid
 
     timestamp = datetime.now(timezone.utc).isoformat()
-    uuid_part = str(uuid.uuid4())[:8]
     sk = f"{timestamp}#{category}#{hash(item_data.get('original_text', '')) % 10000}"
 
     item = {
@@ -166,13 +225,25 @@ def create_item(
     }
 
     table.put_item(Item=item)
+
+    index_vector(
+        pk=item["PK"],
+        sk=sk,
+        embedding=embedding,
+        metadata={
+            "category": category,
+            "name": item_data.get("name") or "",
+            "status": item_data.get("status", "open"),
+        },
+    )
+
     return sk
 
 
 def save_with_embedding_matching(
     item_data: Dict[str, Any], similarity_threshold: float = 0.85
 ) -> Dict[str, Any]:
-    """Save item using embedding similarity matching.
+    """Save item using S3 Vectors similarity matching.
 
     Returns dict with:
         - action: "created" or "updated"
@@ -195,10 +266,14 @@ def save_with_embedding_matching(
 
     if similar_item:
         update_item(similar_item["PK"], similar_item["SK"], item_data, original_text)
+        embedding_list = [float(e) for e in similar_item.get("embedding", [])]
+        similarity = (
+            cosine_similarity(embedding, embedding_list) if embedding_list else 0.0
+        )
         return {
             "action": "updated",
             "sk": similar_item["SK"],
-            "similarity": cosine_similarity(embedding, [float(e) for e in similar_item["embedding"]]),
+            "similarity": similarity,
             "category": category,
         }
 
@@ -222,7 +297,7 @@ def save_to_dynamodb_with_embedding(
     action: str = "open",
     similarity_threshold: float = 0.85,
 ) -> Dict[str, Any]:
-    """Save item using embedding similarity matching with action-based status.
+    """Save item using S3 Vectors similarity matching with action-based status.
 
     Returns dict with action, sk, similarity, category, and status.
     """

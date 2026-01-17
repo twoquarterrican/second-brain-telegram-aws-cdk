@@ -9,7 +9,7 @@ def handle(
     chat_id: str,
     process_message,
     save_to_dynamodb_with_embedding,
-    **kwargs,
+    **_kwargs,
 ):
     """Process and classify a message, then save using embedding matching."""
     result = process_message(text)

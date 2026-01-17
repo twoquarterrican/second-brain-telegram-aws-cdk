@@ -4,6 +4,7 @@ import boto3
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import requests
+from anthropic.types import MessageParam
 
 from lambdas.digest import generate_digest_summary, get_open_items, get_completed_items
 from lambdas.actions import (
@@ -75,10 +76,10 @@ def classify_with_anthropic(message: str) -> Optional[Dict[str, Any]]:
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
             messages=[
-                {
-                    "role": "user",
-                    "content": CLASSIFICATION_PROMPT.format(message=message),
-                }
+                MessageParam(
+                    role="user",
+                    content=CLASSIFICATION_PROMPT.format(message=message),
+                ),
             ],
         )
 
@@ -280,3 +281,8 @@ def handler(event, _context):
             "statusCode": 500,
             "body": json.dumps({"error": "Internal server error"}),
         }
+
+    return {
+        "statusCode": 200,
+        "body": json.dumps({"message": "Message processed successfully"}),
+    }

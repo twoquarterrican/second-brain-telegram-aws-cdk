@@ -46,7 +46,7 @@ logging.basicConfig(
 )
 logging.Formatter.format = lambda self, record: json.dumps(
     {
-        "timestamp": datetime.utcfromtimestamp(record.created).strftime(
+        "timestamp": datetime.fromtimestamp(record.created, timezone=timezone.utc).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         ),
         "level": record.levelname,

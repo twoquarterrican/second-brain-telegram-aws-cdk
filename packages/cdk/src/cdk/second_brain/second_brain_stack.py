@@ -4,6 +4,7 @@ from aws_cdk import (
     aws_lambda as _lambda,
     aws_dynamodb as dynamodb,
     aws_s3 as s3,
+    aws_s3_deployment as s3deploy,
     aws_events as events,
     aws_events_targets as targets,
     aws_iam as iam,
@@ -11,6 +12,7 @@ from aws_cdk import (
     RemovalPolicy,
     BundlingOptions,
 )
+from aws_cdk import CfnResource
 import os
 from constructs import Construct
 from common.environments import lambdas_dir, lambdas_src_dir, common_dir
@@ -56,11 +58,26 @@ class SecondBrainStack(Stack):
             auto_delete_objects=True,
         )
 
+        # S3 Vector Index for similarity search
+        vector_index = CfnResource(
+            self,
+            "SecondBrainVectorIndex",
+            type="AWS::S3::VectorIndex",
+            properties={
+                "IndexName": "SecondBrainItemsIndex",
+                "IndexUri": f"s3://{vector_bucket.bucket_name}/vector-index/",
+                "VectorDimension": 1024,
+                "Metric": "COSINE",
+            },
+        )
+        vector_index.node.add_dependency(vector_bucket)
+
         # Environment variables for Lambdas
         lambda_env = {
             "DDB_TABLE_NAME": table.table_name,
             "SECOND_BRAIN_TABLE_NAME": table.table_name,
             "VECTOR_BUCKET_NAME": vector_bucket.bucket_name,
+            "S3_VECTOR_INDEX_NAME": "SecondBrainItemsIndex",
         }
         for key in [
             "ANTHROPIC_API_KEY",
@@ -114,6 +131,23 @@ class SecondBrainStack(Stack):
                 ],
             )
         ]
+
+        # S3 Vectors permissions
+        s3_vectors_policy = iam.PolicyStatement(
+            effect=iam.Effect.ALLOW,
+            actions=[
+                "s3:SearchVectors",
+                "s3:BatchPutVector",
+                "s3:BatchDeleteVector",
+                "s3:CreateVectorIndex",
+                "s3:DescribeVectorIndex",
+            ],
+            resources=[
+                f"arn:aws:s3:::{vector_bucket.bucket_name}",
+                f"arn:aws:s3:::{vector_bucket.bucket_name}/*",
+            ],
+        )
+
         # noinspection PyTypeChecker
         processor_lambda = _lambda.Function(
             self,
@@ -127,6 +161,7 @@ class SecondBrainStack(Stack):
             layers=[dependencies_layer],
             initial_policy=[
                 *invoke_model,
+                s3_vectors_policy,
             ],
         )
         table.grant_read_write_data(processor_lambda)
@@ -190,7 +225,9 @@ class SecondBrainStack(Stack):
         weekly_rule.add_target(targets.LambdaFunction(digest_lambda))
 
         # Role for triggering lambdas (assumed by scripts/automation)
-        trigger_role = self._create_trigger_role(table=table, vector_bucket=vector_bucket)
+        trigger_role = self._create_trigger_role(
+            table=table, vector_bucket=vector_bucket
+        )
 
         # Outputs
         CfnOutput(
@@ -224,7 +261,7 @@ class SecondBrainStack(Stack):
     def _create_trigger_role(
         self,
         table: dynamodb.Table,
-            vector_bucket: s3.Bucket,
+        vector_bucket: s3.Bucket,
     ) -> iam.Role:
         """Create a role that can be assumed to invoke lambdas."""
 
@@ -285,6 +322,24 @@ class SecondBrainStack(Stack):
                 resources=[
                     vector_bucket.bucket_arn,
                     f"{vector_bucket.bucket_arn}/*",
+                ],
+            )
+        )
+
+        # Allow S3 Vectors operations
+        trigger_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "s3:SearchVectors",
+                    "s3:BatchPutVector",
+                    "s3:BatchDeleteVector",
+                    "s3:CreateVectorIndex",
+                    "s3:DescribeVectorIndex",
+                ],
+                resources=[
+                    f"arn:aws:s3:::{vector_bucket.bucket_name}",
+                    f"arn:aws:s3:::{vector_bucket.bucket_name}/*",
                 ],
             )
         )
