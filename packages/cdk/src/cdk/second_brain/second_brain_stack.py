@@ -50,6 +50,7 @@ class SecondBrainStack(Stack):
         # Environment variables for Lambdas
         lambda_env = {
             "DDB_TABLE_NAME": table.table_name,
+            "SECOND_BRAIN_TABLE_NAME": table.table_name,
         }
         for key in [
             "ANTHROPIC_API_KEY",
@@ -139,6 +140,21 @@ class SecondBrainStack(Stack):
         )
         table.grant_read_write_data(digest_lambda)
 
+        # Task Linker Lambda
+        # noinspection PyTypeChecker
+        task_linker_lambda = _lambda.Function(
+            self,
+            "TaskLinkerLambda",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="lambdas.task_linker.linker.handler",
+            code=code,
+            environment=lambda_env,
+            timeout=Duration.seconds(30),
+            memory_size=256,
+            layers=[dependencies_layer],
+        )
+        table.grant_read_write_data(task_linker_lambda)
+
         # EventBridge Rule for Daily Digest (8 AM UTC)
         daily_rule = events.Rule(
             self,
@@ -163,6 +179,7 @@ class SecondBrainStack(Stack):
         trigger_role = self._create_trigger_role(
             processor_lambda,
             digest_lambda,
+            task_linker_lambda,
             table,
         )
 
@@ -193,6 +210,7 @@ class SecondBrainStack(Stack):
         self,
         processor_lambda: _lambda.Function,
         digest_lambda: _lambda.Function,
+        task_linker_lambda: _lambda.Function,
         table: dynamodb.Table,
     ) -> iam.Role:
         """Create a role that can be assumed to invoke lambdas."""
@@ -214,6 +232,7 @@ class SecondBrainStack(Stack):
                 resources=[
                     processor_lambda.function_arn,
                     digest_lambda.function_arn,
+                    task_linker_lambda.function_arn,
                 ],
             )
         )
