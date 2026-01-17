@@ -94,14 +94,17 @@ class SecondBrainStack(Stack):
             ),
         )
 
-        # allow lambdas to call bedrock
+        # Allow Bedrock InvokeModel for Titan embeddings (primary) and other models (fallback)
         invoke_model = iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
             actions=[
                 "bedrock:InvokeModel",
                 "bedrock:ListFoundationModels",
             ],
-            resources=["*"],
+            resources=[
+                "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v1",
+                "arn:aws:bedrock:*::foundation-model/*",
+            ],
         )
         # noinspection PyTypeChecker
         processor_lambda = _lambda.Function(
@@ -152,6 +155,7 @@ class SecondBrainStack(Stack):
             timeout=Duration.seconds(30),
             memory_size=256,
             layers=[dependencies_layer],
+            initial_policy=[invoke_model],
         )
         table.grant_read_write_data(task_linker_lambda)
 
@@ -233,6 +237,17 @@ class SecondBrainStack(Stack):
                     processor_lambda.function_arn,
                     digest_lambda.function_arn,
                     task_linker_lambda.function_arn,
+                ],
+            )
+        )
+
+        # Allow Bedrock InvokeModel for Titan embeddings (backfill and Lambda use)
+        trigger_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["bedrock:InvokeModel", "bedrock:ListFoundationModels"],
+                resources=[
+                    "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v1",
                 ],
             )
         )

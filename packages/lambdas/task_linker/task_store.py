@@ -1,6 +1,7 @@
 import uuid
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+from decimal import Decimal
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 
@@ -9,6 +10,11 @@ table = dynamodb.Table(os.environ["SECOND_BRAIN_TABLE_NAME"])
 
 PK_PREFIX_USER = "USER#"
 SK_PREFIX_TASK = "TASK#"
+
+
+def serialize_embedding(embedding: list[float]) -> list:
+    """Convert embedding floats to DynamoDB-compatible format."""
+    return [Decimal(str(x)) for x in embedding]
 
 
 def make_task_keys(user_id: str, task_id: str):
@@ -44,8 +50,8 @@ def create_task(user_id: str, name: str, status: str, embedding: list[float]):
         "entityType": "Task",
         "name": name,
         "status": status,
-        "embedding": embedding,
-        "createdAt": datetime.utcnow().isoformat(),
+        "embedding": serialize_embedding(embedding),
+        "createdAt": datetime.now(timezone.utc).isoformat(),
     }
     table.put_item(Item=item)
     return task_id

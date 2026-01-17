@@ -5,30 +5,37 @@ Backfill utility for embedding missing Task items in DynamoDB.
 This script:
 1. Assumes SecondBrainTriggerRole to get DynamoDB write permissions
 2. Scans SecondBrainTable for Task items missing embeddings
-3. Batch processes items (≤20 per OpenAI call)
-4. Generates embeddings using OpenAI text-embedding-3-small
+3. Batch processes items (≤20 per embedding API call)
+4. Generates embeddings using Bedrock Titan Text (with OpenAI fallback)
 5. Updates items with embedding and embeddingUpdatedAt
 6. Uses checkpointing (JSON file) for resume capability
 
 Usage:
     python scripts/backfill_embeddings.py
+
+Environment variables:
+    AWS_BEDROCK_REGION: Bedrock region (default: us-east-1)
+    OPENAI_API_KEY: OpenAI API key for fallback (optional)
+    AWS_PROFILE: AWS profile for credentials
 """
 
 import os
 import sys
 import time
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
-from openai import OpenAI
 from common.environments import get_table
+from common.bedrock_embeddings import embed_texts, EMBEDDING_MODEL
 
 # Constants
 CHECKPOINT_FILE = "backfill_checkpoint.json"
 BATCH_SIZE = 20
-EMBEDDING_MODEL = "text-embedding-3-small"
 THROTTLE_SECONDS = 0.5
+
+logger = logging.getLogger(__name__)
 
 
 def get_checkpoint() -> set:
@@ -47,40 +54,33 @@ def save_checkpoint(items: set):
         json.dump(list(items), f)
 
 
-def embed_texts(client: OpenAI, texts: list[str]) -> list[list[float]]:
-    """Generate embeddings for a batch of texts using OpenAI."""
-    resp = client.embeddings.create(
-        model=EMBEDDING_MODEL,
-        input=texts,
-    )
-    return [d.embedding for d in resp.data]
-
-
 def update_item_embedding(table, pk: str, sk: str, embedding: list[float]):
     """Update a DynamoDB item with embedding and timestamp."""
     table.update_item(
         Key={"PK": pk, "SK": sk},
-        UpdateExpression="SET embedding = :e, embeddingUpdatedAt = :t",
+        UpdateExpression="SET embedding = :e, embeddingUpdatedAt = :t, embeddingProvider = :p",
         ExpressionAttributeValues={
             ":e": embedding,
             ":t": datetime.utcnow().isoformat(),
+            ":p": "bedrock-titan",
         },
     )
 
 
 def run_backfill():
     """Main backfill execution."""
+    bedrock_region = os.environ.get("AWS_BEDROCK_REGION", "us-east-1")
     print("🚀 Starting embedding backfill...")
+    print(f"   Provider: Bedrock Titan (primary), OpenAI (fallback)")
+    print(f"   Bedrock region: {bedrock_region}")
     print(f"   Model: {EMBEDDING_MODEL}")
     print(f"   Batch size: {BATCH_SIZE}")
     print()
 
-    # Initialize OpenAI client
-    openai_api_key = os.environ.get("OPENAI_API_KEY")
-    if not openai_api_key:
-        raise ValueError("OPENAI_API_KEY environment variable not set")
-
-    client = OpenAI(api_key=openai_api_key)
+    # Check if Bedrock is configured
+    if not os.environ.get("AWS_BEDROCK_REGION"):
+        print("⚠️  AWS_BEDROCK_REGION not set, will use OpenAI fallback")
+        print()
 
     # Get table with assumed role credentials
     print("🔐 Assuming SecondBrainTriggerRole...")
@@ -127,9 +127,14 @@ def run_backfill():
             batch = items_to_process[i : i + BATCH_SIZE]
             texts = [item.get("name", "") or "" for item in batch]
 
-            # Generate embeddings
+            # Generate embeddings (Bedrock with OpenAI fallback)
             print(f"   📦 Embedding batch of {len(texts)} items...")
-            embeddings = embed_texts(client, texts)
+            try:
+                embeddings = embed_texts(texts, use_bedrock=True)
+                print(f"   ✅ Generated {len(embeddings)} embeddings")
+            except Exception as e:
+                print(f"   ❌ Embedding failed: {e}")
+                continue
 
             # Update each item
             for item, embedding in zip(batch, embeddings):
@@ -154,4 +159,5 @@ def run_backfill():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     run_backfill()
