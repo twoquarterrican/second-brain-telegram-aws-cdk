@@ -8,27 +8,66 @@ with OpenAI fallback for local development or when Bedrock is unavailable.
 import os
 import json
 import logging
+import time
 from typing import Optional, Dict
 from functools import lru_cache
 
 import boto3
 from botocore.exceptions import ClientError
 
+from common.environments import get_boto3_client
+
 logger = logging.getLogger(__name__)
 
 BEDROCK_REGION = os.environ.get("AWS_BEDROCK_REGION", "us-east-1")
-BEDROCK_MODEL_ID = "amazon.titan-embed-text-v1"
+BEDROCK_MODEL_ID = "amazon.titan-embed-text-v2:0"
 OPENAI_MODEL_ID = "text-embedding-3-small"
 EMBEDDING_MODEL = BEDROCK_MODEL_ID
 
 # Simple cache for embeddings
 _embedding_cache: Dict[str, list[float]] = {}
 
+# Retry configuration
+MAX_RETRIES = 3
+INITIAL_BACKOFF = 1.0  # seconds
+MAX_BACKOFF = 32.0  # seconds
+
 
 @lru_cache(maxsize=1024)
 def _cached_embedding(text: str) -> Optional[list[float]]:
     """Get cached embedding for a text string."""
     return _embedding_cache.get(text)
+
+
+def _invoke_bedrock_with_retry(text: str, client) -> list[float]:
+    """Invoke Bedrock model with exponential backoff retry.
+
+    Args:
+        text: Text to embed
+        client: boto3 bedrock-runtime client
+
+    Returns:
+        Embedding vector
+
+    Raises:
+        ClientError: If all retries fail
+    """
+    body = json.dumps({"inputText": text})
+    response = client.invoke_model(
+        modelId=BEDROCK_MODEL_ID,
+        body=body,
+        accept="application/json",
+        contentType="application/json",
+    )
+    payload = json.loads(response["body"].read())
+
+    embedding = payload.get("embedding") or payload.get("embeddings")
+    if embedding is None:
+        raise ValueError(
+            f"Bedrock response missing embedding for text: {text[:50]}..."
+        )
+
+    return embedding
 
 
 def embed_bedrock_titan(texts: list[str]) -> list[list[float]]:
@@ -41,42 +80,23 @@ def embed_bedrock_titan(texts: list[str]) -> list[list[float]]:
         List of embedding vectors, one per input text
 
     Raises:
-        ClientError: If Bedrock API call fails
+        ClientError: If Bedrock API call fails after retries
     """
     if not texts:
         return []
 
-    region = os.environ.get("AWS_BEDROCK_REGION", BEDROCK_REGION)
-    client = boto3.client("bedrock-runtime", region_name=region)
+    client = get_boto3_client("bedrock-runtime", second_brain_trigger_role=True)
 
     embeddings: list[list[float]] = []
 
     for text in texts:
         try:
-            body = json.dumps({"inputText": text})
-            response = client.invoke_model(
-                modelId=BEDROCK_MODEL_ID,
-                body=body,
-                accept="application/json",
-                contentType="application/json",
-            )
-            payload = json.loads(response["body"].read())
-
-            # Titan can return either "embedding" (single) or "embeddings" (batch)
-            embedding = payload.get("embedding") or payload.get("embeddings")
-            if embedding is None:
-                logger.warning(
-                    f"Bedrock response missing embedding for text: {text[:50]}..."
-                )
-                embedding = [0.0]
-
+            embedding = _invoke_bedrock_with_retry(text, client)
             embeddings.append(embedding)
+            logger.debug(f"Generated embedding for text: {text[:50]}...")
 
-        except ClientError as e:
-            logger.error(f"Bedrock API error for text '{text[:50]}...': {e}")
-            raise
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Bedrock response: {e}")
+        except Exception as e:
+            logger.error(f"Failed to embed text after retries: {text[:50]}...: {e}")
             raise
 
     return embeddings
@@ -126,16 +146,13 @@ def embed_texts(texts: list[str], use_bedrock: bool = True) -> list[list[float]]
         try:
             return embed_bedrock_titan(texts)
         except Exception as e:
-            logger.warning(
-                f"Bedrock Titan embedding failed: {e}, falling back to OpenAI"
-            )
+            raise ValueError( f"Bedrock Titan embedding failed" ) from e
 
-    # Fallback to OpenAI
-    try:
-        return embed_openai(texts)
-    except Exception as e:
-        logger.error(f"OpenAI embedding also failed: {e}")
-        raise
+    else:
+        try:
+            return embed_openai(texts)
+        except Exception as e:
+            raise ValueError(f"OpenAI embedding also failed") from e
 
 
 def embed_text(text: str, use_bedrock: bool = True) -> list[float]:

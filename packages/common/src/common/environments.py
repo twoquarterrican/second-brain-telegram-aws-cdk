@@ -28,6 +28,7 @@ def get_table(second_brain_trigger_role: bool = True):
     client = get_dynamo_client(second_brain_trigger_role=second_brain_trigger_role)
     return client.Table("SecondBrain")
 
+
 @cache
 def project_root() -> Path:
     """Load configuration from env.json and return project root"""
@@ -211,7 +212,7 @@ def find_lambda_function(logical_id_prefix: str) -> Optional[str]:
 
 
 def assume_second_brain_trigger_role(
-    session_name: str = "SecondBrainTrigger"
+    session_name: str = "SecondBrainTrigger",
 ) -> boto3.Session:
     """Assume a role and return a session with temporary credentials."""
 

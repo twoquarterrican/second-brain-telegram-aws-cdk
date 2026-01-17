@@ -48,7 +48,7 @@ def embed_text(text: str) -> list[float]:
 
             return bedrock_embed(text, use_bedrock=True)
         except Exception as e:
-            logger.warning(f"Bedrock embedding failed: {e}, falling back to OpenAI")
+            raise ValueError(f"Bedrock embedding failed: {e}") from e
 
     # Fallback to OpenAI
     try:
@@ -64,4 +64,4 @@ def embed_text(text: str) -> list[float]:
 
     except Exception as e:
         logger.error(f"OpenAI embedding also failed: {e}")
-        raise ValueError(f"Failed to generate embedding: {e}")
+        raise ValueError(f"Failed to generate embedding: {e}") from e

@@ -11,9 +11,8 @@ from aws_cdk import (
     BundlingOptions,
 )
 import os
-from pathlib import Path
 from constructs import Construct
-from common.environments import layer_dir, lambdas_dir, lambdas_src_dir, common_dir
+from common.environments import lambdas_dir, lambdas_src_dir, common_dir
 
 
 class SecondBrainStack(Stack):
@@ -95,16 +94,11 @@ class SecondBrainStack(Stack):
         )
 
         # Allow Bedrock InvokeModel for Titan embeddings (primary) and other models (fallback)
-        invoke_model = iam.PolicyStatement(
+        invoke_model = [iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
-            actions=[
-                "bedrock:InvokeModel",
-                "bedrock:ListFoundationModels",
-            ],
-            resources=[
-                "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1",
-            ],
-        )
+            actions=["bedrock:InvokeModel"],
+            resources=["arn:aws:bedrock:us-east-2::foundation-model/amazon.titan-embed-text-v2:0"],
+        )]
         # noinspection PyTypeChecker
         processor_lambda = _lambda.Function(
             self,
@@ -117,7 +111,7 @@ class SecondBrainStack(Stack):
             memory_size=256,
             layers=[dependencies_layer],
             initial_policy=[
-                invoke_model,
+                *invoke_model,
             ],
         )
         table.grant_read_write_data(processor_lambda)
@@ -138,7 +132,7 @@ class SecondBrainStack(Stack):
             timeout=Duration.minutes(5),
             memory_size=512,
             layers=[dependencies_layer],
-            initial_policy=[invoke_model],
+            initial_policy=[*invoke_model],
         )
         table.grant_read_write_data(digest_lambda)
 
@@ -154,7 +148,7 @@ class SecondBrainStack(Stack):
             timeout=Duration.seconds(30),
             memory_size=256,
             layers=[dependencies_layer],
-            initial_policy=[invoke_model],
+            initial_policy=[*invoke_model],
         )
         table.grant_read_write_data(task_linker_lambda)
 
@@ -179,12 +173,7 @@ class SecondBrainStack(Stack):
         weekly_rule.add_target(targets.LambdaFunction(digest_lambda))
 
         # Role for triggering lambdas (assumed by scripts/automation)
-        trigger_role = self._create_trigger_role(
-            processor_lambda,
-            digest_lambda,
-            task_linker_lambda,
-            table,
-        )
+        trigger_role = self._create_trigger_role( table )
 
         # Outputs
         CfnOutput(
@@ -211,10 +200,7 @@ class SecondBrainStack(Stack):
 
     def _create_trigger_role(
         self,
-        processor_lambda: _lambda.Function,
-        digest_lambda: _lambda.Function,
-        task_linker_lambda: _lambda.Function,
-        table: dynamodb.Table,
+            table: dynamodb.Table,
     ) -> iam.Role:
         """Create a role that can be assumed to invoke lambdas."""
 
@@ -228,25 +214,20 @@ class SecondBrainStack(Stack):
             description="Role for triggering Second Brain Lambda functions",
         )
 
-        trigger_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=["lambda:InvokeFunction"],
-                resources=[
-                    processor_lambda.function_arn,
-                    digest_lambda.function_arn,
-                    task_linker_lambda.function_arn,
-                ],
-            )
-        )
-
         # Allow Bedrock InvokeModel for Titan embeddings (backfill and Lambda use)
         trigger_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
-                actions=["bedrock:InvokeModel", "bedrock:ListFoundationModels"],
+                actions=["bedrock:ListFoundationModels"],
+                resources=[ "*"],
+            )
+        )
+        trigger_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["bedrock:InvokeModel"],
                 resources=[
-                    "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1",
+                    "arn:aws:bedrock:us-east-2::foundation-model/amazon.titan-embed-text-v2:0"
                 ],
             )
         )

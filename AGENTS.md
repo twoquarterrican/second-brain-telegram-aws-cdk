@@ -316,3 +316,76 @@ def process_items(items):
 3. **Never swallow exceptions** - always either re-raise or handle specifically
 4. **Let failures surface** - users need to see errors to fix them
 5. **Add context when re-raising** - help users understand what failed and why
+
+## Embedding Retry Configuration
+
+The embedding system uses exponential backoff retry for Bedrock API calls:
+
+```python
+# Configuration constants
+MAX_RETRIES = 3
+INITIAL_BACKOFF = 1.0  # seconds
+MAX_BACKOFF = 32.0  # seconds
+```
+
+**Retry behavior:**
+- Up to 3 attempts per embedding request
+- Exponential backoff: 1s → 2s → 4s (capped at 32s)
+- Random jitter added (10% of backoff) to prevent thundering herd
+- Logs warnings on each retry with countdown
+
+**Error types retried:**
+- `ClientError` (AWS API errors)
+- `json.JSONDecodeError` (parsing failures)
+- `ValueError` (missing embedding in response)
+
+## Task Linking System
+
+### DynamoDB Key Pattern
+```
+PK = "USER#<user_id>"
+SK = "TASK#<task_id>"
+```
+
+### Embedding Flow
+1. Telegram message arrives → `link_task()` called
+2. Generates embedding via Bedrock Titan (or OpenAI fallback)
+3. Queries DynamoDB for user's open tasks (status ≠ "completed")
+4. Computes cosine similarity between message and each task embedding
+5. If similarity > 0.85: updates existing task status
+6. Otherwise: creates new task with embedding
+
+### Lambda Configuration
+- **Timeout**: 30 seconds
+- **Memory**: 256 MB
+- **Bedrock Model**: `amazon.titan-embed-text-v2:0`
+- **OpenAI Fallback**: `text-embedding-3-small`
+
+### Environment Variables
+```bash
+AWS_BEDROCK_REGION=us-east-1  # Bedrock region for embeddings
+OPENAI_API_KEY=sk-...         # Fallback provider
+```
+
+## AssumeRole CLI Script
+
+The `assume-role` script allows running any AWS command with Second Brain Trigger Role credentials:
+
+```bash
+# Run AWS CLI commands
+uv run assume-role -- aws s3 ls
+uv run assume-role -- aws lambda list-functions --region us-east-1
+
+# Run Python/boto3 commands
+uv run assume-role -c "print(session.client('s3').list_buckets())"
+
+# Interactive mode
+uv run assume-role -i
+```
+
+**Features:**
+- Auto-detects TriggerRoleArn from CloudFormation stack
+- Falls back to prompting for role ARN if not found
+- Sets AWS credentials in environment for AWS CLI
+- Provides `session`, `client`, and `click` variables for Python commands
+- Supports all AWS CLI subcommands (s3, lambda, dynamodb, etc.)

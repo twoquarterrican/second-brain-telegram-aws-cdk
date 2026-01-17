@@ -24,7 +24,8 @@ import sys
 import time
 import json
 import logging
-from datetime import datetime
+from decimal import Decimal
+from datetime import datetime, timezone
 from pathlib import Path
 
 from common.environments import get_table
@@ -36,6 +37,24 @@ BATCH_SIZE = 20
 THROTTLE_SECONDS = 0.5
 
 logger = logging.getLogger(__name__)
+
+# Configure CloudWatch-compatible JSON logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "message": "%(message)s"}',
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+logging.Formatter.format = lambda self, record: json.dumps(
+    {
+        "timestamp": datetime.utcfromtimestamp(record.created).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+        "level": record.levelname,
+        "message": record.getMessage(),
+        "logger": record.name,
+        "module": record.module,
+    }
+)
 
 
 def get_checkpoint() -> set:
@@ -60,8 +79,8 @@ def update_item_embedding(table, pk: str, sk: str, embedding: list[float]):
         Key={"PK": pk, "SK": sk},
         UpdateExpression="SET embedding = :e, embeddingUpdatedAt = :t, embeddingProvider = :p",
         ExpressionAttributeValues={
-            ":e": embedding,
-            ":t": datetime.utcnow().isoformat(),
+            ":e": [Decimal(v) for v in embedding],
+            ":t": datetime.now(timezone.utc).isoformat(),
             ":p": "bedrock-titan",
         },
     )
@@ -78,9 +97,8 @@ def run_backfill():
     print()
 
     # Check if Bedrock is configured
-    if not os.environ.get("AWS_BEDROCK_REGION"):
-        print("⚠️  AWS_BEDROCK_REGION not set, will use OpenAI fallback")
-        print()
+    if not bedrock_region:
+        raise SystemExit("⚠️  AWS_BEDROCK_REGION not set, will use OpenAI fallback")
 
     # Get table with assumed role credentials
     print("🔐 Assuming SecondBrainTriggerRole...")
@@ -104,8 +122,7 @@ def run_backfill():
 
     for page in paginator.paginate(
         TableName=table_name,
-        FilterExpression="entityType = :t AND attribute_not_exists(embedding)",
-        ExpressionAttributeValues={":t": "Task"},
+        FilterExpression="attribute_not_exists(embedding)",
     ):
         items = page.get("Items", [])
         total_scanned += len(items)
@@ -129,12 +146,8 @@ def run_backfill():
 
             # Generate embeddings (Bedrock with OpenAI fallback)
             print(f"   📦 Embedding batch of {len(texts)} items...")
-            try:
-                embeddings = embed_texts(texts, use_bedrock=True)
-                print(f"   ✅ Generated {len(embeddings)} embeddings")
-            except Exception as e:
-                print(f"   ❌ Embedding failed: {e}")
-                continue
+            embeddings = embed_texts(texts, use_bedrock=True)
+            print(f"   ✅ Generated {len(embeddings)} embeddings")
 
             # Update each item
             for item, embedding in zip(batch, embeddings):
