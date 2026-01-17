@@ -190,7 +190,7 @@ class SecondBrainStack(Stack):
         weekly_rule.add_target(targets.LambdaFunction(digest_lambda))
 
         # Role for triggering lambdas (assumed by scripts/automation)
-        trigger_role = self._create_trigger_role(table)
+        trigger_role = self._create_trigger_role(table=table, vector_bucket=vector_bucket)
 
         # Outputs
         CfnOutput(
@@ -224,6 +224,7 @@ class SecondBrainStack(Stack):
     def _create_trigger_role(
         self,
         table: dynamodb.Table,
+            vector_bucket: s3.Bucket,
     ) -> iam.Role:
         """Create a role that can be assumed to invoke lambdas."""
 
