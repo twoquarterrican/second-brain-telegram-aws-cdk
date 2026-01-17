@@ -4,7 +4,6 @@ from aws_cdk import (
     aws_lambda as _lambda,
     aws_dynamodb as dynamodb,
     aws_s3 as s3,
-    aws_s3_deployment as s3deploy,
     aws_events as events,
     aws_events_targets as targets,
     aws_iam as iam,
@@ -12,7 +11,6 @@ from aws_cdk import (
     RemovalPolicy,
     BundlingOptions,
 )
-from aws_cdk import CfnResource
 import os
 from constructs import Construct
 from common.environments import lambdas_dir, lambdas_src_dir, common_dir
@@ -57,20 +55,6 @@ class SecondBrainStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
         )
-
-        # S3 Vector Index for similarity search
-        vector_index = CfnResource(
-            self,
-            "SecondBrainVectorIndex",
-            type="AWS::S3::VectorIndex",
-            properties={
-                "IndexName": "SecondBrainItemsIndex",
-                "IndexUri": f"s3://{vector_bucket.bucket_name}/vector-index/",
-                "VectorDimension": 1024,
-                "Metric": "COSINE",
-            },
-        )
-        vector_index.node.add_dependency(vector_bucket)
 
         # Environment variables for Lambdas
         lambda_env = {
@@ -139,8 +123,6 @@ class SecondBrainStack(Stack):
                 "s3:SearchVectors",
                 "s3:BatchPutVector",
                 "s3:BatchDeleteVector",
-                "s3:CreateVectorIndex",
-                "s3:DescribeVectorIndex",
             ],
             resources=[
                 f"arn:aws:s3:::{vector_bucket.bucket_name}",
@@ -334,8 +316,6 @@ class SecondBrainStack(Stack):
                     "s3:SearchVectors",
                     "s3:BatchPutVector",
                     "s3:BatchDeleteVector",
-                    "s3:CreateVectorIndex",
-                    "s3:DescribeVectorIndex",
                 ],
                 resources=[
                     f"arn:aws:s3:::{vector_bucket.bucket_name}",
