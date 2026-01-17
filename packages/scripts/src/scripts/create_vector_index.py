@@ -28,7 +28,7 @@ def create_vector_index():
     s3control = boto3.client("s3control", region_name=region)
 
     print(f"Creating S3 Vector Index in {region}...")
-    print(f"  Index Name: SecondBrainItemsIndex")
+    print("  Index Name: SecondBrainItemsIndex")
     print(f"  Bucket: {bucket_name}")
 
     try:

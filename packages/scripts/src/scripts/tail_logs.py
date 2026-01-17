@@ -3,12 +3,9 @@
 Tail CloudWatch logs for Second Brain Lambda functions
 """
 
-import os
-import sys
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional
 
-import boto3
 import click
 from InquirerPy import inquirer
 

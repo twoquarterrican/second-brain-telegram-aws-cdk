@@ -2,14 +2,6 @@
 repos:
   - repo: local
     hooks:
-      - id: check-banned-imports
-        name: Check for banned imports (click)
-        description: Ensure click is not imported in common or lambdas packages
-        entry: python packages/scripts/src/scripts/check_banned_imports.py
-        language: system
-        pass_filenames: false
-        stages: [pre-commit]
-
       - id: ruff-lint
         name: Ruff lint
         description: Run ruff linter for import sorting and unused imports

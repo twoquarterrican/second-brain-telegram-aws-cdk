@@ -22,7 +22,6 @@ Environment variables:
 import json
 import logging
 import os
-import sys
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -90,7 +89,7 @@ def run_backfill():
     """Main backfill execution."""
     bedrock_region = os.environ.get("AWS_BEDROCK_REGION", "us-east-1")
     print("🚀 Starting embedding backfill...")
-    print(f"   Provider: Bedrock Titan (primary), OpenAI (fallback)")
+    print("   Provider: Bedrock Titan (primary), OpenAI (fallback)")
     print(f"   Bedrock region: {bedrock_region}")
     print(f"   Model: {EMBEDDING_MODEL}")
     print(f"   Batch size: {BATCH_SIZE}")

@@ -8,9 +8,8 @@ import math
 import os
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 import boto3
-from botocore.exceptions import ClientError
 
 from common.environments import get_vector_bucket_name, get_vector_index_name
 
@@ -61,7 +60,6 @@ def embed_text(text: str) -> list[float]:
 def _embed_bedrock(text: str, region: str) -> list[float]:
     """Generate embedding using Bedrock Titan."""
     import json
-    import botocore
 
     client = boto3.client("bedrock-runtime", region_name=region)
     body = json.dumps({"inputText": text})
@@ -207,7 +205,6 @@ def create_item(
     category: str, item_data: Dict[str, Any], embedding: list[float]
 ) -> str:
     """Create a new item with embedding."""
-    import uuid
 
     timestamp = datetime.now(timezone.utc).isoformat()
     sk = f"{timestamp}#{category}#{hash(item_data.get('original_text', '')) % 10000}"

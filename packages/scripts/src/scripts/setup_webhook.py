@@ -1,196 +1,110 @@
 #!/usr/bin/env python3
 """
-Telegram Webhook CLI for Second Brain using Click + InquirerPy.
-Provides both traditional CLI commands and interactive prompts.
+Specification:
+- Let user pick action
+- Actions include:
+  - Set up webhook
+  - Get webhook info
+  - Delete webhook
+  - Test bot connection
+  - Add bot commands
+- Environment should be read from common/environments.py, the way we do for other scripts
+- Registered in scripts section of pyproject.toml so we can run with uv run...
+- Uses click for CLI entry point, InquirerPy for interactive prompts
 """
 
-import json
 import os
-import subprocess
 import sys
 from typing import Any, Optional, Tuple
 
 import click
+import requests
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 
-import common.environments
+from common.environments import get_stack_output, get_telegram_bot_token
 
 
-def get_function_url(function_name: str, region: str = "us-east-1") -> Optional[str]:
-    """Get Function URL for a Lambda function using AWS CLI"""
+def get_webhook_url_from_stack() -> Optional[str]:
+    """Get webhook URL from CDK stack outputs."""
+    return get_stack_output("SecondBrainStack", "ProcessorFunctionUrl")
+
+
+def get_secret_token() -> Optional[str]:
+    """Get Telegram secret token from environment."""
+    return os.getenv("TELEGRAM_SECRET_TOKEN")
+
+
+def telegram_api_call(
+    bot_token: str, method: str, payload: Optional[dict] = None
+) -> Tuple[bool, Any]:
+    """Make a Telegram Bot API call."""
+    url = f"https://api.telegram.org/bot{bot_token}/{method}"
     try:
-        result = subprocess.run(
-            [
-                "aws",
-                "lambda",
-                "get-function-url-config",
-                "--function-name",
-                function_name,
-                "--region",
-                region,
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-
-        config = json.loads(result.stdout)
-        return config["FunctionUrl"]
-    except subprocess.CalledProcessError as e:
-        click.echo(f"❌ Error getting function URL: {e.stderr}", err=True)
-        return None
-    except json.JSONDecodeError as e:
-        click.echo(f"❌ Error parsing function URL response: {e}", err=True)
-        return None
-
-
-def get_function_url_from_cdk(
-    stack_name: str = "SecondBrainStack", region: str = "us-east-1"
-) -> Optional[str]:
-    """Get Function URL from CDK stack outputs using AWS CLI"""
-    try:
-        result = subprocess.run(
-            [
-                "aws",
-                "cloudformation",
-                "describe-stacks",
-                "--stack-name",
-                stack_name,
-                "--region",
-                region,
-                "--query",
-                "Stacks[0].Outputs[?OutputKey=='ProcessorFunctionUrl'].OutputValue",
-                "--output",
-                "text",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-
-        # The output is already the URL string from the query
-        function_url = result.stdout.strip()
-        return function_url if function_url else None
-
-    except subprocess.CalledProcessError as e:
-        click.echo(f"❌ Error getting CDK stack outputs: {e.stderr}", err=True)
-        click.echo(
-            f"💡 Make sure you've deployed the CDK stack first: 'cdk deploy'", err=True
-        )
-        return None
-    except Exception as e:
-        click.echo(f"❌ Unexpected error: {e}", err=True)
-        return None
+        if payload:
+            response = requests.post(url, json=payload, timeout=30)
+        else:
+            response = requests.get(url, timeout=30)
+        result = response.json()
+        if result.get("ok"):
+            return True, result.get("result", result.get("description", "Success"))
+        else:
+            return False, result.get("description", "Unknown error")
+    except requests.RequestException as e:
+        return False, str(e)
 
 
 def set_webhook(
     bot_token: str, webhook_url: str, secret_token: Optional[str] = None
 ) -> Tuple[bool, str]:
-    """Set Telegram webhook"""
-    import requests
-
-    url = f"https://api.telegram.org/bot{bot_token}/setWebhook"
-
+    """Set Telegram webhook."""
     payload = {"url": webhook_url}
     if secret_token:
         payload["secret_token"] = secret_token
-
-    try:
-        response = requests.post(url, json=payload, timeout=30)
-        result = response.json()
-
-        if result.get("ok"):
-            return True, "Webhook set successfully!"
-        else:
-            return False, result.get("description", "Unknown error")
-
-    except Exception as e:
-        return False, str(e)
+    success, result = telegram_api_call(bot_token, "setWebhook", payload)
+    if success:
+        return True, "Webhook set successfully!"
+    return False, result
 
 
 def get_webhook_info(bot_token: str) -> Tuple[bool, Any]:
-    """Get current webhook information"""
-    import requests
-
-    url = f"https://api.telegram.org/bot{bot_token}/getWebhookInfo"
-
-    try:
-        response = requests.get(url, timeout=30)
-        result = response.json()
-
-        if result.get("ok"):
-            return True, result["result"]
-        else:
-            return False, result.get("description", "Unknown error")
-
-    except Exception as e:
-        return False, str(e)
+    """Get current webhook information."""
+    return telegram_api_call(bot_token, "getWebhookInfo")
 
 
 def delete_webhook(bot_token: str) -> Tuple[bool, str]:
-    """Delete Telegram webhook"""
-    import requests
-
-    url = f"https://api.telegram.org/bot{bot_token}/deleteWebhook"
-
-    try:
-        response = requests.post(url, timeout=30)
-        result = response.json()
-
-        if result.get("ok"):
-            return True, "Webhook deleted successfully!"
-        else:
-            return False, result.get("description", "Unknown error")
-
-    except Exception as e:
-        return False, str(e)
+    """Delete Telegram webhook."""
+    success, result = telegram_api_call(bot_token, "deleteWebhook", {})
+    if success:
+        return True, "Webhook deleted successfully!"
+    return False, result
 
 
-def get_bot_token_interactive() -> str:
-    """Get bot token from user input"""
-    return inquirer.text(
-        message="Enter your Telegram Bot Token:",
-        validate=lambda x: len(x) > 10 and ":" in x,
-        invalid_message="Please enter a valid Telegram bot token (should contain ':')",
-        transformer=lambda x: f"{x[:15]}..." if len(x) > 15 else x,
-    ).execute()
+def get_bot_info(bot_token: str) -> Tuple[bool, Any]:
+    """Get bot information to test connection."""
+    return telegram_api_call(bot_token, "getMe")
 
 
-def get_bot_token() -> str:
-    """Get bot token from env.json or interactive input"""
-    telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not telegram_bot_token:
-        raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set")
+def set_bot_commands(bot_token: str, commands: list[dict]) -> Tuple[bool, str]:
+    """Set bot commands that appear in Telegram's command menu."""
+    success, result = telegram_api_call(bot_token, "setMyCommands", {"commands": commands})
+    if success:
+        return True, "Bot commands set successfully!"
+    return False, result
 
-    return telegram_bot_token
+
+def get_bot_commands(bot_token: str) -> Tuple[bool, Any]:
+    """Get current bot commands."""
+    return telegram_api_call(bot_token, "getMyCommands")
 
 
-def get_secret_token_interactive(env_config: dict) -> Optional[str]:
-    """Get secret token from user input"""
-    if inquirer.confirm("Generate random secret token?", default=True):
-        import secrets
-
-        secret_token = secrets.token_urlsafe(32)
-        click.echo(f"🔑 Generated secret token: {secret_token}")
-        return secret_token
-    else:
-        # Try to read from env.json
-        env_secret = env_config.get("TelegramSecretToken", "")
-        if env_secret:
-            click.echo(f"📋 Found secret token in env.json: {env_secret[:8]}...")
-            use_env_secret = inquirer.confirm(
-                message="Use secret token from env.json?", default=True
-            ).execute()
-
-            if use_env_secret:
-                return env_secret
-
-        return inquirer.text(
-            message="Enter secret token:",
-            validate=lambda x: len(x) >= 8,
-            invalid_message="Secret token must be at least 8 characters",
-        ).execute()
+# Default commands for the Second Brain bot
+DEFAULT_BOT_COMMANDS = [
+    {"command": "start", "description": "Start the bot and get welcome message"},
+    {"command": "help", "description": "Show available commands"},
+    {"command": "digest", "description": "Get your daily digest now"},
+    {"command": "status", "description": "Check bot and webhook status"},
+]
 
 
 @click.group(invoke_without_command=True)
@@ -199,193 +113,110 @@ def get_secret_token_interactive(env_config: dict) -> Optional[str]:
 def cli(ctx: click.Context):
     """Telegram Webhook CLI for Second Brain Setup."""
     if ctx.invoked_subcommand is None:
-        # Default to interactive mode when no subcommand is specified
         ctx.invoke(interactive_cmd)
-        return
 
 
-@cli.command()
-@click.option("--token", "-t", help="Telegram bot token")
-@click.option("--webhook-url", "-w", help="Webhook URL")
-@click.option("--secret-token", "-s", help="Secret token for webhook verification")
-@click.option(
-    "--function-name",
-    "-f",
-    default="ProcessorLambda",
-    help="AWS Lambda function name",
-)
-@click.option("--region", "-r", default="us-east-2", help="AWS region")
-@click.option(
-    "--auto-detect",
-    "-a",
-    is_flag=True,
-    help="Auto-detect webhook URL from CDK stack outputs",
-)
-def set_cmd(
-    token: Optional[str],
-    webhook_url: Optional[str],
-    secret_token: Optional[str],
-    function_name: str,
-    region: str,
-    auto_detect: bool,
-):
+@cli.command(name="set")
+@click.option("--webhook-url", "-w", help="Webhook URL (auto-detected from CDK if not provided)")
+@click.option("--secret-token", "-s", help="Secret token (read from env if not provided)")
+@click.option("--auto-detect", "-a", is_flag=True, help="Auto-detect URL and proceed without prompts")
+def set_cmd(webhook_url: Optional[str], secret_token: Optional[str], auto_detect: bool):
     """Set up Telegram webhook."""
-
     click.echo("🔧 Setting up Telegram webhook...")
 
-    # Get bot token
-    if not token:
-        token = get_bot_token(env_config)
-    else:
-        click.echo(f"📋 Using provided bot token: {token[:15]}...")
+    # Get bot token from environment
+    try:
+        token = get_telegram_bot_token()
+        click.echo(f"📋 Bot token: {token[:15]}...")
+    except ValueError as e:
+        click.echo(f"❌ {e}", err=True)
+        sys.exit(1)
 
     # Get webhook URL
     if not webhook_url:
-        if auto_detect:
-            click.echo("🔍 Auto-detecting webhook URL from CDK stack...")
-            webhook_url = get_function_url_from_cdk("SecondBrainStack", region)
-            if not webhook_url:
-                click.echo(
-                    "❌ Could not get function URL from CDK stack. Please check AWS CLI configuration and permissions.",
-                    err=True,
-                )
-                click.echo(
-                    "💡 Make sure you've deployed the CDK stack first: 'cdk deploy'",
-                    err=True,
-                )
-                sys.exit(1)
-        else:
-            source = inquirer.select(
-                message="How do you want to get webhook URL?",
-                choices=[
-                    Choice("cdk", "Auto-detect from CDK stack outputs (recommended)"),
-                    Choice("lambda", "Direct Lambda function lookup"),
-                    Choice("manual", "Enter manually"),
-                ],
-            ).execute()
-
-            if source == "cdk":
-                webhook_url = get_function_url_from_cdk("SecondBrainStack", region)
-                if not webhook_url:
-                    click.echo(
-                        "❌ Could not get function URL from CDK stack. Please check AWS CLI configuration and permissions.",
-                        err=True,
-                    )
-                    click.echo(
-                        "💡 Make sure you've deployed the CDK stack first: 'cdk deploy'",
-                        err=True,
-                    )
-                    sys.exit(1)
-            elif source == "lambda":
-                function_name = inquirer.text(
-                    message="Lambda function name:",
-                    default=function_name,
-                ).execute()
-                region = inquirer.text(
-                    message="AWS region:",
-                    default=region,
-                ).execute()
-
-                webhook_url = get_function_url(function_name, region)
-                if not webhook_url:
-                    click.echo(
-                        "❌ Could not get function URL. Please check AWS CLI configuration and permissions.",
-                        err=True,
-                    )
-                    sys.exit(1)
-            else:
+        click.echo("🔍 Auto-detecting webhook URL from CDK stack...")
+        webhook_url = get_webhook_url_from_stack()
+        if not webhook_url:
+            click.echo("❌ Could not get webhook URL from CDK stack.", err=True)
+            click.echo("💡 Make sure you've deployed: uv run cdkw deploy", err=True)
+            if not auto_detect:
                 webhook_url = inquirer.text(
-                    message="Enter webhook URL:",
+                    message="Enter webhook URL manually:",
                     validate=lambda x: x.startswith("https://"),
-                    invalid_message="Please enter a valid HTTPS URL",
+                    invalid_message="URL must start with https://",
                 ).execute()
-    else:
-        click.echo(f"📋 Using provided webhook URL: {webhook_url}")
+            else:
+                sys.exit(1)
+    click.echo(f"📋 Webhook URL: {webhook_url}")
 
     # Get secret token
     if not secret_token:
-        use_secret = inquirer.confirm(
-            message="Use secret token for webhook security?", default=True
-        ).execute()
-
-        if use_secret:
-            secret_token = get_secret_token_interactive(env_config)
+        secret_token = get_secret_token()
+    if secret_token:
+        click.echo("📋 Secret token: configured")
     else:
-        click.echo("📋 Using provided secret token")
+        click.echo("📋 Secret token: not configured")
 
-    # Ensure webhook_url is not None
-    if webhook_url is None:
-        click.echo("❌ Webhook URL is required.", err=True)
-        return
-
-    # Confirmation
-    click.echo(f"\n📋 Webhook Configuration Summary:")
-    click.echo(f"   Bot Token: {token[:15]}...")
-    click.echo(f"   Webhook URL: {webhook_url}")
-    click.echo(f"   Secret Token: {'Yes' if secret_token else 'No'}")
-
-    if not inquirer.confirm("Proceed with webhook setup?", default=True):
-        click.echo("❌ Cancelled.")
-        return
+    # Confirmation (skip if auto_detect)
+    if not auto_detect:
+        if not inquirer.confirm(message="Proceed with webhook setup?", default=True).execute():
+            click.echo("❌ Cancelled.")
+            return
 
     # Set webhook
     click.echo("⏳ Setting webhook...")
     success, message = set_webhook(token, webhook_url, secret_token)
 
     if success:
-        click.echo("✅ Webhook set successfully!")
+        click.echo(f"✅ {message}")
         click.echo(f"   URL: {webhook_url}")
-        if secret_token:
-            click.echo("   Secret token configured")
         click.echo("\n🎉 Your Second Brain bot is ready to receive messages!")
     else:
         click.echo(f"❌ Failed to set webhook: {message}", err=True)
+        sys.exit(1)
 
 
-@cli.command()
-@click.option("--token", "-t", help="Telegram bot token")
-def info_cmd(token: Optional[str]):
+@cli.command(name="info")
+def info_cmd():
     """Get current webhook information."""
-
-    if not token:
-        env_config = load_env_config()
-        token = get_bot_token(env_config)
-    else:
-        click.echo(f"📋 Using provided bot token: {token[:15]}...")
+    try:
+        token = get_telegram_bot_token()
+    except ValueError as e:
+        click.echo(f"❌ {e}", err=True)
+        sys.exit(1)
 
     click.echo("🔍 Getting webhook information...")
     success, result = get_webhook_info(token)
 
     if success:
         click.echo("\n📋 Current webhook info:")
-        click.echo(f"   URL: {result.get('url', 'Not set')}")
-        click.echo(
-            f"   Has custom certificate: {result.get('has_custom_certificate', False)}"
-        )
+        click.echo(f"   URL: {result.get('url') or 'Not set'}")
+        click.echo(f"   Has custom certificate: {result.get('has_custom_certificate', False)}")
         click.echo(f"   Pending updates: {result.get('pending_update_count', 0)}")
-        click.echo(f"   Last error: {result.get('last_error_message', 'None')}")
-        click.echo(f"   Custom secret: {'Yes' if result.get('secret_token') else 'No'}")
+        if result.get("last_error_date"):
+            click.echo(f"   Last error: {result.get('last_error_message', 'Unknown')}")
+        else:
+            click.echo("   Last error: None")
+        click.echo(f"   Max connections: {result.get('max_connections', 'Default')}")
     else:
         click.echo(f"❌ Failed to get webhook info: {result}", err=True)
+        sys.exit(1)
 
 
-@cli.command()
-@click.option("--token", "-t", help="Telegram bot token")
+@cli.command(name="delete")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
-def delete_cmd(token: Optional[str], force: bool):
+def delete_cmd(force: bool):
     """Delete Telegram webhook."""
-
-    if not token:
-        token = get_bot_token()
-    else:
-        click.echo(f"📋 Using provided bot token: {token[:15]}...")
+    try:
+        token = get_telegram_bot_token()
+    except ValueError as e:
+        click.echo(f"❌ {e}", err=True)
+        sys.exit(1)
 
     if not force:
-        confirm = inquirer.confirm(
-            message="Are you sure you want to delete webhook?", default=False
-        ).execute()
-
-        if not confirm:
+        if not inquirer.confirm(
+            message="Are you sure you want to delete the webhook?", default=False
+        ).execute():
             click.echo("❌ Cancelled.")
             return
 
@@ -396,62 +227,231 @@ def delete_cmd(token: Optional[str], force: bool):
         click.echo(f"✅ {message}")
     else:
         click.echo(f"❌ Failed to delete webhook: {message}", err=True)
+        sys.exit(1)
 
 
-@cli.command()
-@click.option("--token", "-t", help="Telegram bot token")
-def test_cmd(token: Optional[str]):
+@cli.command(name="test")
+def test_cmd():
     """Test bot connection."""
-
-    if not token:
-        env_config = load_env_config()
-        token = get_bot_token(env_config)
-    else:
-        click.echo(f"📋 Using provided bot token: {token[:15]}...")
+    try:
+        token = get_telegram_bot_token()
+    except ValueError as e:
+        click.echo(f"❌ {e}", err=True)
+        sys.exit(1)
 
     click.echo("🔍 Testing bot connection...")
-    success, result = get_webhook_info(token)
+    success, result = get_bot_info(token)
 
     if success:
-        webhook_url = result.get("url", "Not configured")
-        click.echo(f"✅ Bot is accessible! Webhook URL: {webhook_url}")
+        click.echo(f"✅ Bot is accessible!")
+        click.echo(f"   Username: @{result.get('username', 'Unknown')}")
+        click.echo(f"   Name: {result.get('first_name', 'Unknown')}")
+        click.echo(f"   Bot ID: {result.get('id', 'Unknown')}")
+        click.echo(f"   Can join groups: {result.get('can_join_groups', False)}")
+        click.echo(f"   Can read group messages: {result.get('can_read_all_group_messages', False)}")
     else:
         click.echo(f"❌ Failed to connect to bot: {result}", err=True)
+        sys.exit(1)
+
+
+@cli.command(name="commands")
+@click.option("--set-defaults", "-s", is_flag=True, help="Set default Second Brain commands")
+@click.option("--clear", "-c", is_flag=True, help="Clear all bot commands")
+def commands_cmd(set_defaults: bool, clear: bool):
+    """Add or view bot commands."""
+    try:
+        token = get_telegram_bot_token()
+    except ValueError as e:
+        click.echo(f"❌ {e}", err=True)
+        sys.exit(1)
+
+    if clear:
+        click.echo("🗑️  Clearing bot commands...")
+        success, message = set_bot_commands(token, [])
+        if success:
+            click.echo("✅ Bot commands cleared!")
+        else:
+            click.echo(f"❌ Failed to clear commands: {message}", err=True)
+            sys.exit(1)
+        return
+
+    if set_defaults:
+        click.echo("🔧 Setting default bot commands...")
+        click.echo("\n📋 Commands to set:")
+        for cmd in DEFAULT_BOT_COMMANDS:
+            click.echo(f"   /{cmd['command']} - {cmd['description']}")
+
+        success, message = set_bot_commands(token, DEFAULT_BOT_COMMANDS)
+        if success:
+            click.echo(f"\n✅ {message}")
+        else:
+            click.echo(f"❌ Failed to set commands: {message}", err=True)
+            sys.exit(1)
+        return
+
+    # Default: show current commands
+    click.echo("🔍 Getting current bot commands...")
+    success, result = get_bot_commands(token)
+
+    if success:
+        if result:
+            click.echo("\n📋 Current bot commands:")
+            for cmd in result:
+                click.echo(f"   /{cmd['command']} - {cmd['description']}")
+        else:
+            click.echo("\n📋 No commands configured.")
+            click.echo("💡 Use --set-defaults to add default Second Brain commands.")
+    else:
+        click.echo(f"❌ Failed to get commands: {result}", err=True)
+        sys.exit(1)
 
 
 @cli.command(name="interactive")
 def interactive_cmd():
-    """Launch interactive setup (recommended for first-time users)."""
-
+    """Launch interactive setup (default when no subcommand given)."""
     click.echo("🤖 Telegram Webhook Setup for Second Brain")
     click.echo("=" * 50)
 
-    # Get bot token
-    token = get_bot_token(env_config)
+    # Check for bot token
+    try:
+        token = get_telegram_bot_token()
+        click.echo(f"✅ Bot token found: {token[:15]}...")
+    except ValueError:
+        click.echo("❌ TELEGRAM_BOT_TOKEN not set in environment.")
+        click.echo("💡 Add it to .env.local or set the environment variable.")
+        sys.exit(1)
 
     # Choose action
     action = inquirer.select(
         message="What would you like to do?",
         choices=[
-            Choice("set", "Set up new webhook"),
-            Choice("info", "Get current webhook info"),
+            Choice("set", "Set up webhook"),
+            Choice("info", "Get webhook info"),
             Choice("delete", "Delete webhook"),
             Choice("test", "Test bot connection"),
+            Choice("commands", "Add bot commands"),
         ],
     ).execute()
 
-    # Action selected successfully
+    click.echo()
 
     if action == "set":
-        # Use set command logic without arguments to trigger interactive mode
-        click.echo("🔧 Setting up webhook interactively...")
-        set_cmd(None, None, None, "ProcessorLambda", "us-east-1")
+        # Get webhook URL
+        webhook_url = get_webhook_url_from_stack()
+        if webhook_url:
+            click.echo(f"🔍 Found webhook URL: {webhook_url}")
+            use_detected = inquirer.confirm(
+                message="Use this URL?", default=True
+            ).execute()
+            if not use_detected:
+                webhook_url = inquirer.text(
+                    message="Enter webhook URL:",
+                    validate=lambda x: x.startswith("https://"),
+                    invalid_message="URL must start with https://",
+                ).execute()
+        else:
+            click.echo("⚠️  Could not auto-detect webhook URL from CDK stack.")
+            webhook_url = inquirer.text(
+                message="Enter webhook URL:",
+                validate=lambda x: x.startswith("https://"),
+                invalid_message="URL must start with https://",
+            ).execute()
+
+        # Get secret token
+        secret_token = get_secret_token()
+        if secret_token:
+            click.echo("✅ Secret token found in environment.")
+        else:
+            click.echo("⚠️  No TELEGRAM_SECRET_TOKEN in environment.")
+            use_secret = inquirer.confirm(
+                message="Enter a secret token manually?", default=False
+            ).execute()
+            if use_secret:
+                secret_token = inquirer.secret(
+                    message="Enter secret token:",
+                    validate=lambda x: len(x) >= 8,
+                    invalid_message="Secret token should be at least 8 characters",
+                ).execute()
+
+        # Confirm and set
+        click.echo(f"\n📋 Summary:")
+        click.echo(f"   Webhook URL: {webhook_url}")
+        click.echo(f"   Secret token: {'Yes' if secret_token else 'No'}")
+
+        if inquirer.confirm(message="Proceed?", default=True).execute():
+            click.echo("\n⏳ Setting webhook...")
+            success, message = set_webhook(token, webhook_url, secret_token)
+            if success:
+                click.echo(f"✅ {message}")
+            else:
+                click.echo(f"❌ {message}", err=True)
+
     elif action == "info":
-        info_cmd(token)
+        success, result = get_webhook_info(token)
+        if success:
+            click.echo("\n📋 Current webhook info:")
+            click.echo(f"   URL: {result.get('url') or 'Not set'}")
+            click.echo(f"   Pending updates: {result.get('pending_update_count', 0)}")
+            if result.get("last_error_message"):
+                click.echo(f"   Last error: {result.get('last_error_message')}")
+        else:
+            click.echo(f"❌ {result}", err=True)
+
     elif action == "delete":
-        delete_cmd(token, False)
+        if inquirer.confirm(message="Delete webhook?", default=False).execute():
+            success, message = delete_webhook(token)
+            if success:
+                click.echo(f"✅ {message}")
+            else:
+                click.echo(f"❌ {message}", err=True)
+
     elif action == "test":
-        test_cmd(token)
+        click.echo("🔍 Testing connection...")
+        success, result = get_bot_info(token)
+        if success:
+            click.echo(f"✅ Connected to @{result.get('username')}")
+        else:
+            click.echo(f"❌ {result}", err=True)
+
+    elif action == "commands":
+        cmd_action = inquirer.select(
+            message="What would you like to do with commands?",
+            choices=[
+                Choice("view", "View current commands"),
+                Choice("set", "Set default Second Brain commands"),
+                Choice("clear", "Clear all commands"),
+            ],
+        ).execute()
+
+        if cmd_action == "view":
+            success, result = get_bot_commands(token)
+            if success and result:
+                click.echo("\n📋 Current commands:")
+                for cmd in result:
+                    click.echo(f"   /{cmd['command']} - {cmd['description']}")
+            elif success:
+                click.echo("📋 No commands configured.")
+            else:
+                click.echo(f"❌ {result}", err=True)
+
+        elif cmd_action == "set":
+            click.echo("\n📋 Setting these commands:")
+            for cmd in DEFAULT_BOT_COMMANDS:
+                click.echo(f"   /{cmd['command']} - {cmd['description']}")
+            if inquirer.confirm(message="Proceed?", default=True).execute():
+                success, message = set_bot_commands(token, DEFAULT_BOT_COMMANDS)
+                if success:
+                    click.echo(f"✅ {message}")
+                else:
+                    click.echo(f"❌ {message}", err=True)
+
+        elif cmd_action == "clear":
+            if inquirer.confirm(message="Clear all commands?", default=False).execute():
+                success, message = set_bot_commands(token, [])
+                if success:
+                    click.echo("✅ Commands cleared!")
+                else:
+                    click.echo(f"❌ {message}", err=True)
 
 
 if __name__ == "__main__":

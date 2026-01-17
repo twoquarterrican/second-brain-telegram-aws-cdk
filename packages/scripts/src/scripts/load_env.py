@@ -7,7 +7,6 @@ Or run directly to print export statements:
     eval "$(python load_env.py)"
 """
 
-import os
 from pathlib import Path
 
 

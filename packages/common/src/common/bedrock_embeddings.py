@@ -8,12 +8,8 @@ with OpenAI fallback for local development or when Bedrock is unavailable.
 import json
 import logging
 import os
-import time
 from functools import lru_cache
 from typing import Dict, Optional
-
-import boto3
-from botocore.exceptions import ClientError
 
 from common.environments import get_boto3_client
 
@@ -146,13 +142,13 @@ def embed_texts(texts: list[str], use_bedrock: bool = True) -> list[list[float]]
         try:
             return embed_bedrock_titan(texts)
         except Exception as e:
-            raise ValueError( f"Bedrock Titan embedding failed" ) from e
+            raise ValueError( "Bedrock Titan embedding failed" ) from e
 
     else:
         try:
             return embed_openai(texts)
         except Exception as e:
-            raise ValueError(f"OpenAI embedding also failed") from e
+            raise ValueError("OpenAI embedding also failed") from e
 
 
 def embed_text(text: str, use_bedrock: bool = True) -> list[float]:

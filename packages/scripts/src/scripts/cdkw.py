@@ -6,9 +6,8 @@ Usage: uv run cdkw [cdk_args...]
 
 import subprocess
 import sys
-from pathlib import Path
 
-from common.environments import cdk_src_dir, layer_dir
+from common.environments import cdk_src_dir
 
 
 def run_cdk(cdk_args):

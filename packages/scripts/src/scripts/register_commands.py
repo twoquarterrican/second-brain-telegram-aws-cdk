@@ -13,15 +13,12 @@ Commands:
 - /decisions - Help me decide on something
 """
 
-import traceback
 from typing import Optional
 
 import click
 import requests
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
-
-import common.environments
 
 
 def get_bot_token() -> str:
