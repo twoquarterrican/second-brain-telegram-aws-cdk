@@ -67,6 +67,7 @@ ignore = ["F541"]  # f-string without any placeholders
 [tool.ruff.lint.per-file-ignores]
 "packages/common/src/common/environments.py" = ["T201", "I"]
 "packages/lambdas/src/lambdas/actions/*" = ["T201"]
+"packages/scripts/**/*.py" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["common", "lambdas", "scripts"]
