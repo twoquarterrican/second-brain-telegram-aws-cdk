@@ -237,17 +237,19 @@ class SecondBrainStack(Stack):
             )
         )
 
-        # Allow DynamoDB query and scan on table and GSI
+        # Allow DynamoDB operations for backfill and task linking
         trigger_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
                 actions=[
-                    "dynamodb:Query",
                     "dynamodb:Scan",
+                    "dynamodb:Query",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:GetItem",
                 ],
                 resources=[
                     table.table_arn,
-                    f"{table.table_arn}/index/StatusIndex",
+                    f"{table.table_arn}/index/*",
                 ],
             )
         )
