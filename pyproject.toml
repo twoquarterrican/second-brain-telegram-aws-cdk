@@ -62,6 +62,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E4", "F", "I", "T201"]  # E4+F: imports, I: isort, T201: print
+ignore = ["F541"]  # f-string without any placeholders
 
 [tool.ruff.lint.per-file-ignores]
 "packages/common/src/common/environments.py" = ["T201", "I"]
