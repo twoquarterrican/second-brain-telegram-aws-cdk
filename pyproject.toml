@@ -48,7 +48,8 @@ dev = [
     "black>=22.0.0",
     "flake8>=4.0.0",
     "ruff>=0.1.0",
-    "mypy>=1.0.0"
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
 ]
 
 [tool.black]
@@ -60,7 +61,11 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E4", "I"]  # E4+F: imports, I: isort
+select = ["E4", "F", "I", "T201"]  # E4+F: imports, I: isort, T201: print
+
+[tool.ruff.lint.per-file-ignores]
+"packages/common/src/common/environments.py" = ["T201", "I"]
+"packages/lambdas/src/lambdas/actions/*" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["common", "lambdas", "scripts"]
@@ -74,4 +79,9 @@ disallow_untyped_defs = true
 [tool.pytest.ini_options]
 pythonpath = [
     "packages/common/src",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
 ]

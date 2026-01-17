@@ -1,0 +1,29 @@
+# See https://pre-commit.com for more information
+repos:
+  - repo: local
+    hooks:
+      - id: check-banned-imports
+        name: Check for banned imports (click)
+        description: Ensure click is not imported in common or lambdas packages
+        entry: python packages/scripts/src/scripts/check_banned_imports.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: ruff-lint
+        name: Ruff lint
+        description: Run ruff linter for import sorting and unused imports
+        entry: uv run ruff check
+        language: system
+        types: [python]
+        stages: [pre-commit]
+        files: ^(packages/common/src|packages/lambdas/src)/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']

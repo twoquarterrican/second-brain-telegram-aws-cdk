@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=(Path(__file__).parents[1] / "env.local"))
 
+
 @cache
 def get_dynamo_client(second_brain_trigger_role: bool = False):
     """Get DynamoDB client with assumed role credentials."""
@@ -119,6 +120,32 @@ def get_boto3_client(service_name: str, second_brain_trigger_role: bool, **kwarg
 
 
 @cache
+def get_vector_bucket_name():
+    key = "VECTOR_BUCKET_NAME"
+    value = os.getenv("VECTOR_BUCKET_NAME")
+    if value is None:
+        raise ValueError(
+            f"{key} environment variable not set. Use `uv run create-vector-bucket` to create a bucket."
+            f" Put the bucket name in the {key} environment variable"
+            f" or in packages/common/src/env.local"
+        )
+    return value
+
+
+@cache
+def get_vector_index_name():
+    key = "VECTOR_INDEX_NAME"
+    value = os.getenv("VECTOR_INDEX_NAME")
+    if value is None:
+        raise ValueError(
+            f"{key} environment variable not set. Use `uv run create-vector-bucket` to create a bucket."
+            f" Put the bucket name in the {key} environment variable"
+            f" or in packages/common/src/env.local"
+        )
+    return value
+
+
+@cache
 def get_boto3_resource(service_name: str, second_brain_trigger_role: bool, **kwargs):
     """Get boto3 resource with preferred configuration"""
     session = get_aws_session(second_brain_trigger_role=second_brain_trigger_role)
@@ -202,9 +229,7 @@ def find_lambda_function(logical_id_prefix: str) -> Optional[str]:
         resource_type = resource.get("ResourceType", "")
         physical_id = resource.get("PhysicalResourceId", "")
 
-        if resource_type == "AWS::Lambda::Function" and logical_id.startswith(
-            logical_id_prefix
-        ):
+        if resource_type == "AWS::Lambda::Function" and logical_id.startswith(logical_id_prefix):
             return physical_id
 
     return None
@@ -255,4 +280,4 @@ def get_telegram_bot_token() -> str:
 
 
 if __name__ == "__main__":
-    print_aws_config()
+    pass
