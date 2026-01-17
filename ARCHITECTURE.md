@@ -570,7 +570,7 @@ From AGENTS.md guidelines:
 - Built-in asset bundling for layers
 - Native AWS support without third-party state
 
-### 9.5 ADR-005: Event Sourcing with INBOX_LOG
+### 9.5 ADR-001: Event Sourcing with INBOX_LOG
 
 **Status**: In Progress
 
@@ -584,7 +584,7 @@ From AGENTS.md guidelines:
 - Schema evolution: New fields = replay, not migration scripts
 - Experimentation: Try different AI models, compare results
 
-**Full ADR**: [docs/adr/005-event-sourcing-inbox-log.md](./docs/adr/005-event-sourcing-inbox-log.md)
+**Full ADR**: [docs/adr/001-event-sourcing-inbox-log.md](./docs/adr/001-event-sourcing-inbox-log.md)
 
 ---
 

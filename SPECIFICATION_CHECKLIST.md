@@ -61,8 +61,8 @@ This document tracks implementation status against the architecture specificatio
 | original_text stored | ✅ | `embedding_matcher.py` | On every item |
 | confidence stored | ✅ | `embedding_matcher.py:create_item` | AI confidence score |
 | category stored | ✅ | `embedding_matcher.py:create_item` | Classification result |
-| Dedicated INBOX_LOG category | 🟡 | [ADR-005](./docs/adr/005-event-sourcing-inbox-log.md) | **In progress** - Event sourcing design accepted |
-| Log status (filed/needs_review/corrected) | 🟡 | [ADR-005](./docs/adr/005-event-sourcing-inbox-log.md) | Part of event sourcing design |
+| Dedicated INBOX_LOG category | 🟡 | [ADR-001](./docs/adr/001-event-sourcing-inbox-log.md) | **In progress** - Event sourcing design accepted |
+| Log status (filed/needs_review/corrected) | 🟡 | [ADR-001](./docs/adr/001-event-sourcing-inbox-log.md) | Part of event sourcing design |
 | CloudWatch logging | ✅ | All Lambdas | Standard Python logging |
 
 ### 1.6 The Bouncer (Confidence Filter)
@@ -259,7 +259,7 @@ This document tracks implementation status against the architecture specificatio
 
 | Feature | ADR | Status |
 |---------|-----|--------|
-| Event Sourcing with INBOX_LOG | [ADR-005](./docs/adr/005-event-sourcing-inbox-log.md) | Design accepted, implementation pending |
+| Event Sourcing with INBOX_LOG | [ADR-001](./docs/adr/001-event-sourcing-inbox-log.md) | Design accepted, implementation pending |
 
 ---
 
