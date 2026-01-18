@@ -3,12 +3,11 @@
 import json
 from datetime import datetime, timezone, timedelta
 from typing import Mapping, Any
-from lambdas.processor import TelegramWebhookEvent
-from lambdas.telegram.telegram_messages import send_telegram_message
-from common.environments import get_env
-import boto3
 
-dynamodb = boto3.resource("dynamodb")
+from lambdas.adapter.out.persistence.dynamo_table import get_second_brain_table
+from lambdas.telegram.telegram_messages import send_telegram_message, TelegramWebhookEvent
+from common.environments import get_env
+
 
 
 def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
@@ -23,8 +22,7 @@ def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
     chat_id = str(message.chat.id)
 
     # Get table and API key from environment
-    table_name = get_env("DDB_TABLE_NAME", default="SecondBrain")
-    table = dynamodb.Table(table_name)
+    table = get_second_brain_table()
     ANTHROPIC_API_KEY = get_env("ANTHROPIC_API_KEY")
 
     send_telegram_message(

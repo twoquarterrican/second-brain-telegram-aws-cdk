@@ -7,12 +7,12 @@ from typing import Any, Dict, Optional, Mapping
 from common.environments import get_env
 
 # Import the event model
-from lambdas.processor import TelegramWebhookEvent
+from lambdas.telegram.telegram_messages import TelegramWebhookEvent
 
 logger = logging.getLogger(__name__)
 ANTHROPIC_API_KEY = get_env("ANTHROPIC_API_KEY", required=False)
 OPENAI_API_KEY = get_env("OPENAI_API_KEY", required=False)
-BEDROCK_REGION = get_env("BEDROCK_REGION", required=True)
+BEDROCK_REGION = get_env("BEDROCK_REGION", required=False)
 CLASSIFICATION_PROMPT = """Classify the following message into one of these categories: People, Projects, Ideas, Admin.
 
 Extract following fields if present:

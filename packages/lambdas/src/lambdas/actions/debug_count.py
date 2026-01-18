@@ -1,12 +1,10 @@
 """Debug count action - count items by category and status."""
 
-import boto3
 from typing import Mapping, Any
-from lambdas.processor import TelegramWebhookEvent
-from lambdas.telegram.telegram_messages import send_telegram_message
-from common.environments import get_env
 
-dynamodb = boto3.resource("dynamodb")
+from lambdas.adapter.out.persistence.dynamo_table import get_second_brain_table
+from lambdas.telegram.telegram_messages import send_telegram_message, TelegramWebhookEvent
+
 
 
 def count_items(table):
@@ -38,8 +36,7 @@ def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
     chat_id = str(message.chat.id)
 
     # Get table from environment
-    table_name = get_env("DDB_TABLE_NAME", default="SecondBrain")
-    table = dynamodb.Table(table_name)
+    table = get_second_brain_table()
 
     counts = count_items(table)
 

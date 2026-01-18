@@ -2,8 +2,7 @@
 
 from typing import Mapping, Any
 from lambdas.digest import generate_digest_summary
-from lambdas.processor import TelegramWebhookEvent
-from lambdas.telegram.telegram_messages import send_telegram_message
+from lambdas.telegram.telegram_messages import send_telegram_message, TelegramWebhookEvent
 
 
 def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:

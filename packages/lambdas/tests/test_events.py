@@ -13,9 +13,6 @@ from moto import mock_aws
 from lambdas import processor
 from lambdas.actions import process
 
-# Add the parent directory to the path so we can import from src
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
 from lambdas.events import (
     EventRepository,
     MessageReceived,
@@ -368,10 +365,6 @@ class TestProcessorHandler:
             "headers": {"x-telegram-bot-api-secret-token": "wrong-secret"},
             "body": {"message": {"text": "test", "chat": {"id": "123"}}},
         }
-        result = handler(event_wrong_secret, None)
+        result = processor.handler(event_wrong_secret, None)
         assert result["statusCode"] == 403
         assert result["body"] == "Forbidden"
-
-
-if __name__ == "__main__":
-    unittest.main()
