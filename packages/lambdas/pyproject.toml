@@ -16,7 +16,7 @@ dependencies = [
     "common",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 test = [
     "pytest>=7.0.0",
     "moto>=4.0.0",

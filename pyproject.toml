@@ -42,14 +42,14 @@ common = { workspace = true }
 lambdas = { workspace = true }
 scripts = { workspace = true }
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=7.0.0",
     "black>=22.0.0",
     "flake8>=4.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
-    "pre-commit>=3.0.0",
+    "pre-commit>=4.3.0",
 ]
 lambdas = [
     "boto3==1.42.30",
@@ -61,20 +61,12 @@ lambdas = [
     "dotenv==0.9.9",
 ]
 
-[tool.uv]
-default-groups = ["dev"]
 
-[tool.black]
-line-length = 100
-target-version = ['py38']
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-
-[tool.ruff.lint]
-select = ["E4", "F", "I", "T201"]  # E4+F: imports, I: isort, T201: print
-ignore = ["F541"]  # f-string without any placeholders
+lint.select = ["E4", "F", "I", "T201"]  # E4+F: imports, I: isort, T201: print
 
 [tool.ruff.lint.per-file-ignores]
 "packages/common/src/common/environments.py" = ["T201", "I"]
@@ -91,11 +83,17 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
-pythonpath = [
-    "packages/common/src",
+addopts = "-ra -q"
+testpaths = [
+    "packages/common/tests",
+    "packages/lambdas/tests",
 ]
-
-[dependency-groups]
-dev = [
-    "pre-commit>=4.3.0",
+lambdas = [
+    "boto3==1.42.30",
+    "botocore==1.42.30",
+    "requests==2.28.0",
+    "anthropic==0.76.0",
+    "openai==1.109.1",
+    "pydantic==2.12.5",
+    "dotenv==0.9.9",
 ]

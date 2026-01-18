@@ -363,3 +363,7 @@ class TestProcessorHandler:
         result = handler(event_wrong_secret, None)
         assert result["statusCode"] == 403
         assert result["body"] == "Forbidden"
+
+
+if __name__ == '__main__':
+    unittest.main()
