@@ -6,10 +6,11 @@ Events are stored in a single DynamoDB table with PK/SK patterns.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Tuple
 from pydantic import BaseModel, Field
 import boto3
 from botocore.exceptions import ClientError
+from common.timestamps import format_iso8601_zulu
 
 
 class Event(BaseModel, ABC):
@@ -44,10 +45,31 @@ class MessageReceived(Event):
     received_at: str = Field(..., description="ISO timestamp when message was received")
 
     def get_pk(self) -> str:
-        return f"EVENT#{self.source}"
+        return self.build_pk(self.source)
 
     def get_sk(self) -> str:
-        return f"{self.received_at}#{self.source_id}"
+        return self.build_sk(self.received_at, self.source_id)
+
+    @staticmethod
+    def build_pk(source: str) -> str:
+        """Build PK from source."""
+        return f"EVENT#{source}"
+
+    @staticmethod
+    def build_sk(received_at: str, source_id: str) -> str:
+        """Build SK from timestamp and source ID."""
+        return f"{received_at}#{source_id}"
+
+    @staticmethod
+    def parse_pk(pk: str) -> str:
+        """Parse source from PK."""
+        return pk.split("#", 1)[1]
+
+    @staticmethod
+    def parse_sk(sk: str) -> Tuple[str, str]:
+        """Parse received_at and source_id from SK."""
+        received_at, source_id = sk.split("#", 1)
+        return received_at, source_id
 
 
 class MessageClassified(Event):
@@ -73,18 +95,73 @@ class MessageClassified(Event):
 
     # Reference to source message
     source_event_sk: str = Field(..., description="SK of the MessageReceived event")
+    source: str = Field(..., description="Source system: 'telegram', 'email', 'voice'")
+
+    # Original message for replay capability
+    raw_text: str = Field(..., description="Original message text, unmodified")
 
     def get_pk(self) -> str:
-        # Extract source from source_event_sk (format: "timestamp#source_id")
-        # We need to determine the source - this could be passed in or stored
-        # For now, assume we can derive it from the source_event_sk
-        # This might need adjustment based on how we structure the keys
-        return "EVENT#telegram"  # TODO: derive from source_event_sk
+        return self.build_pk(self.source)
 
     def get_sk(self) -> str:
-        # Format: "{timestamp}#{source_id}#CLASSIFIED#{sequence}"
-        # We need to determine sequence number
-        return f"{self.classified_at}#CLASSIFIED#1"  # TODO: handle sequence numbers
+        return self.build_sk(self.classified_at)
+
+    @staticmethod
+    def build_pk(source: str) -> str:
+        """Build PK from source."""
+        return f"EVENT#{source}"
+
+    @staticmethod
+    def build_sk(classified_at: str, sequence: int = 1) -> str:
+        """Build SK from timestamp and sequence number."""
+        return f"{classified_at}#CLASSIFIED#{sequence}"
+
+    @staticmethod
+    def parse_pk(pk: str) -> str:
+        """Parse source from PK."""
+        return pk.split("#", 1)[1]
+
+    @staticmethod
+    def parse_sk(sk: str) -> Tuple[str, int]:
+        """Parse classified_at and sequence from SK."""
+        # Format: "timestamp#CLASSIFIED#sequence"
+        parts = sk.split("#")
+        classified_at = parts[0]
+        sequence = int(parts[2])
+        return classified_at, sequence
+
+    @classmethod
+    def create_from_classification(
+        cls,
+        raw_text: str,
+        category: str,
+        confidence_pct: int,
+        classified_by: str,
+        source_message: "MessageReceived",
+    ) -> "MessageClassified":
+        """Factory method to create a MessageClassified event from classification result."""
+        now_iso = format_iso8601_zulu()
+        confidence_score = min(100, max(0, confidence_pct)) / 100.0
+
+        # Create item identifiers
+        category_lower = category.lower()
+        item_id = source_message.source_id[:16]  # Use first 16 chars of source ID
+        item_pk = f"{category_lower}#{item_id}"
+        item_sk = "PROFILE"
+
+        return cls(
+            event_type="MessageClassified",
+            timestamp=now_iso,
+            classification=category,
+            confidence_score=confidence_score,
+            classified_by=classified_by,
+            classified_at=now_iso,
+            item_pk=item_pk,
+            item_sk=item_sk,
+            source_event_sk=source_message.get_sk(),
+            source=source_message.source,
+            raw_text=raw_text,
+        )
 
 
 class MessageSimilar(Event):
@@ -172,6 +249,8 @@ class EventRepository:
                     "item_pk": {"S": event.item_pk},
                     "item_sk": {"S": event.item_sk},
                     "source_event_sk": {"S": event.source_event_sk},
+                    "source": {"S": event.source},
+                    "raw_text": {"S": event.raw_text},
                 }
             )
 

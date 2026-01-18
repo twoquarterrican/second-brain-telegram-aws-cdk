@@ -2,17 +2,16 @@
 
 import logging
 import json
-from typing import Any, Dict, Mapping
-from common.environments import get_env
+from typing import Any, Mapping, Optional
+from common.logging import log_warning_to_user
 from lambdas.app import app
+from lambdas.events import MessageClassified, MessageReceived
+from lambdas.exceptions import MessageClassificationFailedException
 
 # Import the event model
 from lambdas.telegram.telegram_messages import TelegramWebhookEvent
 
 logger = logging.getLogger(__name__)
-ANTHROPIC_API_KEY = get_env("ANTHROPIC_API_KEY", required=False)
-OPENAI_API_KEY = get_env("OPENAI_API_KEY", required=False)
-BEDROCK_REGION = get_env("BEDROCK_REGION", required=False)
 CLASSIFICATION_PROMPT = """Classify the following message into one of these categories: People, Projects, Ideas, Admin.
 
 Extract following fields if present:
@@ -34,8 +33,8 @@ Return ONLY a JSON object with this structure:
 Message: {message}"""
 
 
-def _classify(message: str) -> Dict[str, Any]:
-    """Process and classify a message."""
+def _classify(message: str, source_message: MessageReceived) -> MessageClassified:
+    """Classify a message using AI and save classification event."""
     try:
         content = (
             app()
@@ -43,30 +42,52 @@ def _classify(message: str) -> Dict[str, Any]:
             .invoke_model(prompt=CLASSIFICATION_PROMPT.format(message=message))
         )
     except Exception as e:
-        raise Exception("AI classification attempt(s) failed") from e
+        error_msg = "AI classification attempt(s) failed"
+        log_warning_to_user(error_msg, exc_info=True)
+        raise MessageClassificationFailedException(error_msg) from e
 
     if content.startswith("```json"):
         content = content[7:-3].strip()
     else:
-        logger.error(f"AI classification failed - invalid response format: {content}")
-        raise Exception("AI classification failed - invalid response format")
+        error_msg = f"AI classification failed - invalid response format: {content}"
+        log_warning_to_user(error_msg)
+        raise MessageClassificationFailedException(error_msg)
 
-    result = json.loads(content)
-    result["original_text"] = message
+    try:
+        result = json.loads(content)
+    except json.JSONDecodeError as e:
+        error_msg = f"AI returned invalid JSON: {content}"
+        log_warning_to_user(error_msg, exc_info=True)
+        raise MessageClassificationFailedException(error_msg) from e
 
-    confidence = result.get("confidence", 0)
-    if not isinstance(confidence, int):
+    # Extract classification result
+    category = result.get("category", "")
+    confidence_pct = result.get("confidence", 0)
+    if not isinstance(confidence_pct, int):
         try:
-            confidence = int(float(confidence))
+            confidence_pct = int(float(confidence_pct))
         except (ValueError, TypeError):
-            confidence = 0
+            confidence_pct = 0
+    confidence_pct = min(100, max(0, confidence_pct))
 
-    result["confidence"] = min(100, max(0, confidence))
+    # Create and save classification event
+    classified_event = MessageClassified.create_from_classification(
+        raw_text=message,
+        category=category,
+        confidence_pct=confidence_pct,
+        classified_by="claude",  # TODO: Get actual model name from AI API
+        source_message=source_message,
+    )
 
-    return result
+    app().get_event_repository().append_event(classified_event)
+
+    return classified_event
 
 
-def handle(event_model: TelegramWebhookEvent) -> Mapping[str, Any]:
+def handle(
+    event_model: TelegramWebhookEvent,
+    message_received_event: Optional[MessageReceived] = None,
+) -> Mapping[str, Any]:
     """Process and classify a message, then save using embedding matching."""
     from lambdas.telegram.telegram_messages import send_telegram_message
     from lambdas.embedding_matcher import save_to_dynamodb_with_embedding
@@ -78,24 +99,47 @@ def handle(event_model: TelegramWebhookEvent) -> Mapping[str, Any]:
 
     text = message.text
     chat_id = str(message.chat.id)
-    result = _classify(text)
 
-    if result["confidence"] >= 60:
-        save_result = save_to_dynamodb_with_embedding(result)
+    if message_received_event is None:
+        return {
+            "statusCode": 500,
+            "body": "Internal error: message_received_event not provided",
+        }
+
+    try:
+        classified_event = _classify(text, message_received_event)
+    except MessageClassificationFailedException:
+        # Log warning already sent to user via log_warning_to_user
+        # Don't retry - return 200 so Telegram doesn't keep resending
+        return {"statusCode": 200, "body": "Classification failed, user notified"}
+
+    # Extract classification data from event
+    confidence_pct = int(classified_event.confidence_score * 100)
+
+    if confidence_pct >= 60:
+        # Convert event to dict format for save_to_dynamodb_with_embedding
+        classification_result = {
+            "category": classified_event.classification,
+            "confidence": confidence_pct,
+            "original_text": classified_event.raw_text,
+            "name": None,  # TODO: Extract from event if needed
+            "status": None,
+            "next_action": None,
+            "notes": None,
+        }
+
+        save_result = save_to_dynamodb_with_embedding(classification_result)
 
         if save_result["action"] == "updated":
             reply = f"🔄 Updated existing *{save_result['category']}* item (similarity: {save_result['similarity']:.0%})"
         else:
-            reply = f"✅ Saved as *{save_result['category']}* (confidence: {result['confidence']}%)"
-
-        if result.get("name"):
-            reply += f"\n📝 *{result['name']}*"
+            reply = f"✅ Saved as *{save_result['category']}* (confidence: {confidence_pct}%)"
 
         send_telegram_message(chat_id, reply)
         logging.info(f"Successfully processed and saved message: {save_result}")
     else:
         snippet = text[:50]
-        reply = f"⚠️ Low confidence ({result['confidence']}%) - not saved. Please rephrase `{snippet}`."
+        reply = f"⚠️ Low confidence ({confidence_pct}%) - not saved. Please rephrase `{snippet}`."
         send_telegram_message(chat_id, reply)
 
     return {"statusCode": 200, "body": "Message processed successfully"}
