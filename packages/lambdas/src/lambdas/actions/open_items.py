@@ -3,8 +3,14 @@
 from lambdas.digest import get_open_items
 
 
-def handle(text: str, send_telegram_message, chat_id: str, **kwargs):
+def handle(event_model, send_telegram_message, **kwargs):
     """List open items grouped by category."""
+    # Extract chat_id from event model
+    message = event_model.message
+    if not message:
+        return {"statusCode": 400, "body": "No message data"}
+
+    chat_id = str(message.chat.id)
     items = get_open_items(days_back=30)
     if items:
         categories = {}

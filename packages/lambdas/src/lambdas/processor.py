@@ -1,7 +1,9 @@
 import json
 import uuid
 from json import JSONDecodeError
+from typing import Optional
 
+from pydantic import BaseModel, Field
 from common.logging import get_logger
 from lambdas.actions import (
     digest,
@@ -17,12 +19,33 @@ from lambdas.actions import (
 )
 from common.environments import get_env
 
-logger = get_logger(__name__)
+
+# Pydantic models for Telegram webhook events
+class TelegramChat(BaseModel):
+    """Telegram chat information."""
+
+    id: int = Field(..., description="Unique chat identifier")
+
+
+class TelegramMessage(BaseModel):
+    """Telegram message structure."""
+
+    message_id: int = Field(..., description="Unique message identifier")
+    text: Optional[str] = Field(None, description="Message text content")
+    chat: TelegramChat = Field(..., description="Chat information")
+
+
+class TelegramWebhookEvent(BaseModel):
+    """Telegram webhook event structure."""
+
+    message: Optional[TelegramMessage] = Field(None, description="Message data")
 
 
 TELEGRAM_SECRET_TOKEN = get_env("TELEGRAM_SECRET_TOKEN", required=False)
 # Export bot token for telegram_messages module
 TELEGRAM_BOT_TOKEN = TELEGRAM_SECRET_TOKEN
+
+logger = get_logger(__name__)
 
 COMMAND_DISPATCH = [
     ("/digest", digest),
@@ -55,7 +78,7 @@ def handler(event, _context):
         response = _handle_authorized_event(event, message_id)
     except (ValueError, KeyError, TypeError, JSONDecodeError) as e:
         # Expected parsing/validation errors
-        logger.error(
+        log_warning_to_user(
             "Error parsing webhook data",
             extra={"error": str(e), "message_id": message_id},
             exc_info=True,
@@ -66,18 +89,7 @@ def handler(event, _context):
         }
     except Exception as e:
         # Unexpected errors - log and return 500
-        logger.error(
-            "Unexpected error processing webhook",
-            extra={"error": str(e), "message_id": message_id},
-            exc_info=True,
-        )
-        response = {
-            "statusCode": 500,
-            "body": json.dumps({"error": "Internal server error"}),
-        }
-    except Exception as e:
-        # Unexpected errors - log and return 500
-        logger.error(
+        log_warning_to_user(
             "Unexpected error processing webhook",
             extra={"error": str(e), "message_id": message_id},
             exc_info=True,
@@ -94,19 +106,41 @@ def handler(event, _context):
 
 
 def _handle_authorized_event(event, message_id):
+    # Parse the webhook event into our pydantic model
     if isinstance(event.get("body"), str):
         webhook_data = json.loads(event["body"])
     else:
         webhook_data = event["body"]
 
-    message = webhook_data.get("message", {})
-    text = message.get("text", "")
-    chat_id = str(message.get("chat", {}).get("id", ""))
-    message_unique_id = message.get("message_id", "")
+    try:
+        telegram_event = TelegramWebhookEvent(**webhook_data)
+    except Exception as e:
+        logger.error(
+            "Failed to parse webhook event",
+            extra={
+                "error": str(e),
+                "message_id": message_id,
+                "webhook_data": webhook_data,
+            },
+            exc_info=True,
+        )
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"error": "Invalid webhook event format"}),
+        }
 
-    if not text:
-        logger.warning("No text in message")
+    # Extract message data
+    message = telegram_event.message
+    if not message or not message.text:
+        logger.warning(
+            "No text in message",
+            extra={"message_id": message_id, "has_message": message is not None},
+        )
         return {"statusCode": 200, "body": "No text to process"}
+
+    text = message.text
+    chat_id = str(message.chat.id)
+    message_unique_id = message.message_id
 
     logger.info(
         "Processing message",
@@ -118,11 +152,9 @@ def _handle_authorized_event(event, message_id):
         },
     )
 
+    # Pass the parsed event model to actions
     for prefix, action in COMMAND_DISPATCH:
         if prefix is None or text.startswith(prefix):
-            return action(
-                text=text,
-                chat_id=chat_id,
-            )
+            return action(event_model=telegram_event)
 
     return None

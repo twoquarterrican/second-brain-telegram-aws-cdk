@@ -6,6 +6,7 @@ from anthropic.types import MessageParam
 from typing import Any, Dict, Optional
 from common.environments import get_env
 
+
 logger = logging.getLogger(__name__)
 ANTHROPIC_API_KEY = get_env("ANTHROPIC_API_KEY", required=False)
 OPENAI_API_KEY = get_env("OPENAI_API_KEY", required=False)
@@ -198,10 +199,18 @@ def handle(
     return {"statusCode": 200, "body": "Message processed successfully"}
 
 
-def process(text: str, chat_id: str, **kwargs):
+def process(event_model, **kwargs):
     """Main process action handler - dispatches to handle with dependencies."""
     from lambdas.telegram.telegram_messages import send_telegram_message
     from lambdas.embedding_matcher import save_to_dynamodb_with_embedding
+
+    # Extract data from the event model
+    message = event_model.message
+    if not message or not message.text:
+        return {"statusCode": 400, "body": "No message text"}
+
+    text = message.text
+    chat_id = str(message.chat.id)
 
     return handle(
         text=text,

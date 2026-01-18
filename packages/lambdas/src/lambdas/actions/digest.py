@@ -3,8 +3,16 @@
 from lambdas.digest import generate_digest_summary
 
 
-def handle(text: str, send_telegram_message, chat_id: str, **kwargs):
+def handle(event_model, send_telegram_message, **kwargs):
     """Generate and send digest."""
+    # Extract text from event model
+    message = event_model.message
+    if not message or not message.text:
+        return {"statusCode": 400, "body": "No message text"}
+
+    text = message.text
+    chat_id = str(message.chat.id)
+
     digest_type = "daily" if "daily" in text.lower() else "weekly"
     summary = generate_digest_summary(digest_type)
     if summary:
