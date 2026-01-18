@@ -1,10 +1,28 @@
 """Debug backfill action - backfill GSI for items from last week."""
 
 from datetime import datetime, timezone, timedelta
+from typing import Mapping, Any
+from lambdas.processor import TelegramWebhookEvent
+from lambdas.telegram.telegram_messages import send_telegram_message
+from common.environments import get_env
+import boto3
+
+dynamodb = boto3.resource("dynamodb")
 
 
-def handle(text: str, send_telegram_message, chat_id: str, table, **kwargs):
+def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
     """Backfill GSI for items from last week."""
+    # Extract chat_id from event model
+    message = event_model.message
+    if not message:
+        return {"statusCode": 400, "body": "No message data"}
+
+    chat_id = str(message.chat.id)
+
+    # Get table from environment
+    table_name = get_env("DDB_TABLE_NAME", default="SecondBrain")
+    table = dynamodb.Table(table_name)
+
     send_telegram_message(chat_id, "🔄 Backfilling GSI for items from last week...")
 
     start_date = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()

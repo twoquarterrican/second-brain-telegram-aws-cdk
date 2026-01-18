@@ -11,6 +11,7 @@ dependencies = [
     "common",
     "lambdas",
     "scripts",
+    "hatchling>=1.10.0",
 ]
 
 [project.scripts]

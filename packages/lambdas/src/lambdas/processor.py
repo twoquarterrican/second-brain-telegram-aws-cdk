@@ -30,7 +30,7 @@ class TelegramChat(BaseModel):
 class TelegramMessage(BaseModel):
     """Telegram message structure."""
 
-    message_id: int = Field(..., description="Unique message identifier")
+    message_id: str = Field(..., min_length=8, max_length=8, description="Unique message identifier")
     text: Optional[str] = Field(None, description="Message text content")
     chat: TelegramChat = Field(..., description="Chat information")
 
@@ -42,22 +42,21 @@ class TelegramWebhookEvent(BaseModel):
 
 
 TELEGRAM_SECRET_TOKEN = get_env("TELEGRAM_SECRET_TOKEN", required=False)
-# Export bot token for telegram_messages module
-TELEGRAM_BOT_TOKEN = TELEGRAM_SECRET_TOKEN
+"""Use this to verify that the webhook is coming from Telegram."""
 
 logger = get_logger(__name__)
 
-COMMAND_DISPATCH = [
-    ("/digest", digest),
-    ("/open", open_items),
-    ("/closed", closed_items),
-    ("/debug count", debug_count),
-    ("/debug backfill", debug_backfill),
-    ("/debug duplicates-auto", debug_duplicates_auto),
-    ("/debug duplicates", debug_duplicates),
-    ("/merge", merge),
-    ("/delete", delete),
-    (None, process_action),
+COMMAND_DISPATCH: list[tuple[Optional[str], Callable[[TelegramWebhookEvent]]], Mapping]= [
+    ("/digest", digest.handle),
+    ("/open", open_items.handle),
+    ("/closed", closed_items.handle),
+    ("/debug count", debug_count.handle),
+    ("/debug backfill", debug_backfill.handle),
+    ("/debug duplicates-auto", debug_duplicates_auto.handle),
+    ("/debug duplicates", debug_duplicates.handle),
+    ("/merge", merge.handle),
+    ("/delete", delete.handle),
+    (None, process_action.handle),
 ]
 
 
@@ -113,6 +112,8 @@ def _handle_authorized_event(event, message_id):
         webhook_data = event["body"]
 
     try:
+        webhook_data["message"] = webhook_data.get("message", {})
+        webhook_data["message"]["message_id"] = message_id
         telegram_event = TelegramWebhookEvent(**webhook_data)
     except Exception as e:
         logger.error(

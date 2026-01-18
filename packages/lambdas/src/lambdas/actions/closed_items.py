@@ -1,9 +1,12 @@
 """Closed items action - list recently completed items."""
 
+from typing import Mapping, Any
 from lambdas.digest import get_completed_items
+from lambdas.processor import TelegramWebhookEvent
+from lambdas.telegram.telegram_messages import send_telegram_message
 
 
-def handle(event_model, send_telegram_message, **kwargs):
+def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
     """List completed items grouped by category."""
     # Extract chat_id from event model
     message = event_model.message

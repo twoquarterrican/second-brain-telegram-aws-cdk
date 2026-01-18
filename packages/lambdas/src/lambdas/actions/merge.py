@@ -1,8 +1,28 @@
 """Merge action - merge one item into another."""
 
+from typing import Mapping, Any
+from lambdas.processor import TelegramWebhookEvent
+from lambdas.telegram.telegram_messages import send_telegram_message
+from common.environments import get_env
+import boto3
 
-def handle(text: str, send_telegram_message, chat_id: str, table, **kwargs):
+dynamodb = boto3.resource("dynamodb")
+
+
+def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
     """Merge FROM item INTO INTO item."""
+    # Extract text and chat_id from event model
+    message = event_model.message
+    if not message or not message.text:
+        return {"statusCode": 400, "body": "No message text"}
+
+    text = message.text
+    chat_id = str(message.chat.id)
+
+    # Get table from environment
+    table_name = get_env("DDB_TABLE_NAME", default="SecondBrain")
+    table = dynamodb.Table(table_name)
+
     parts = text.split()
     if len(parts) != 3:
         send_telegram_message(chat_id, "Usage: /merge FROM_ID INTO_ID")

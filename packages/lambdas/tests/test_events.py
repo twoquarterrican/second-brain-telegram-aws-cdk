@@ -11,6 +11,7 @@ from unittest import mock
 import boto3
 from moto import mock_aws
 from lambdas import processor
+from lambdas.actions import process
 
 # Add the parent directory to the path so we can import from src
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -54,23 +55,17 @@ def telegram_secret_token_env(monkeypatch):
     and restores the original value after the test completes.
     Handles both cases where the variable exists or doesn't exist.
     """
-    with monkey_patch_env(
-        key="TELEGRAM_SECRET_TOKEN",
-        test_value="test-secret-token-for-pytest",
-        monkeypatch=monkeypatch,
-    ) as telegram_secret_token:
-        yield telegram_secret_token
+    value = "test-secret-token"
+    monkeypatch.setattr(processor, "TELEGRAM_SECRET_TOKEN", value)
+    return value
 
 
 @pytest.fixture
 def anthropic_api_key_env(monkeypatch):
     """Fixture to handle ANTHROPIC_API_KEY environment variable."""
-    with monkey_patch_env(
-        key="ANTHROPIC_API_KEY",
-        test_value="test-anthropic-api-key-for-pytest",
-        monkeypatch=monkeypatch,
-    ) as anthropic_api_key:
-        yield anthropic_api_key
+    value = "test-anthropic-api-key"
+    monkeypatch.setattr(process, "ANTHROPIC_API_KEY", value)
+    return value
 
 
 @contextmanager
@@ -350,10 +345,11 @@ class TestEventRepository:
 
 
 class TestProcessorHandler:
-    def test_non_command_message_dispatch(self, telegram_secret_token_env):
+    def test_non_command_message_dispatch(self, telegram_secret_token_env, anthropic_api_key_env):
         """Test that non-command messages are dispatched to the process action."""
         # Test the COMMAND_DISPATCH logic without actually calling the actions
-        processor.handle(
+        print(telegram_secret_token_env)
+        response = processor.handler(
             {
                 "headers": {
                     "x-telegram-bot-api-secret-token": telegram_secret_token_env
@@ -362,23 +358,10 @@ class TestProcessorHandler:
             },
             None,
         )
+        print(response)
 
-    def test_webhook_secret_validation(self, telegram_secret_token_env):
+    def test_webhook_secret_validation_wrong_secret(self, telegram_secret_token_env):
         """Test that webhook secret validation works."""
-
-        # telegram_secret_token_env fixture has set TELEGRAM_SECRET_TOKEN to "test-secret-token-for-pytest"
-
-        # Test with correct secret
-        event = {
-            "headers": {"x-telegram-bot-api-secret-token": telegram_secret_token_env},
-            "body": {"message": {"text": "test", "chat": {"id": "123"}}},
-        }
-        # This will fail later but should pass secret validation
-        try:
-            result = handler(event, None)
-        except Exception:
-            # Expected to fail on AI calls, but secret validation should pass
-            pass
 
         # Test with wrong secret
         event_wrong_secret = {

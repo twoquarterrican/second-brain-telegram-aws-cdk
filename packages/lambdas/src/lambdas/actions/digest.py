@@ -1,9 +1,12 @@
 """Digest action - generate daily/weekly digest."""
 
+from typing import Mapping, Any
 from lambdas.digest import generate_digest_summary
+from lambdas.processor import TelegramWebhookEvent
+from lambdas.telegram.telegram_messages import send_telegram_message
 
 
-def handle(event_model, send_telegram_message, **kwargs):
+def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
     """Generate and send digest."""
     # Extract text from event model
     message = event_model.message

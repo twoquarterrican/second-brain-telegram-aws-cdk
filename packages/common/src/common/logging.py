@@ -29,12 +29,7 @@ from typing import Any, Optional
 
 import requests
 
-try:
-    from pythonjsonlogger import jsonlogger
-
-    HAS_JSON_LOGGER = True
-except ImportError:
-    HAS_JSON_LOGGER = False
+import pythonjsonlogger.json
 
 # Service identification
 SERVICE_NAME = "second-brain"
@@ -65,8 +60,8 @@ def setup_logging(level: str = "INFO", format_type: str = "json"):
         logger.removeHandler(handler)
 
     # Create formatter based on type
-    if format_type == "json" and HAS_JSON_LOGGER:
-        formatter = jsonlogger.JsonFormatter(
+    if format_type == "json":
+        formatter = pythonjsonlogger.json.JsonFormatter(
             fmt="%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"
         )
     else:
@@ -100,7 +95,7 @@ __all__ = [
     "setup_logging",
     "get_logger",
     "log_error",
-    "log_warning",
+    "log_warning_to_user",
     "log_info",
 ]
 
@@ -122,7 +117,8 @@ def _send_telegram(message: str, level: str = "INFO"):
             timeout=10,
         )
         return response.status_code == 200
-    except Exception:
+    except RequestException:
+        log.error("Failed to send Telegram notification", exc_info=True)
         return False
 
 
@@ -155,11 +151,12 @@ def log_error(message: str, cause: Optional[str] = None, **extra: Any):
     _send_telegram(telegram_message, "ERROR")
 
 
-def log_warning(message: str, **extra: Any):
+def log_warning_to_user(message: str, exc_info: bool = False, **extra: Any):
     """Log warning with structured data and notify via Telegram.
 
     Args:
         message: Human-readable warning message
+        exc_info: If True, include exception info in log
         **extra: Additional structured data to include in log
     """
     # Build structured log data
@@ -169,6 +166,9 @@ def log_warning(message: str, **extra: Any):
 
     # Add extra fields
     log_data.update(extra)
+
+    if exc_info:
+        log_data["traceback"] = traceback.format_exc()
 
     # Log with structured data
     logger.warning(message, extra=log_data)
