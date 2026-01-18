@@ -3,8 +3,8 @@ import uuid
 from json import JSONDecodeError
 from typing import Optional, Callable, Mapping, Any
 
-from pydantic import BaseModel, Field
 from common.logging import get_logger
+from common.timestamps import format_iso8601_zulu
 
 from lambdas.actions import (
     digest,
@@ -19,8 +19,9 @@ from lambdas.actions import (
     process as process_action,
 )
 from common.environments import get_env
-from common.logging import get_logger
+from lambdas.events import MessageReceived
 from lambdas.telegram.telegram_messages import TelegramWebhookEvent
+from lambdas.app import app
 
 TELEGRAM_SECRET_TOKEN = get_env("TELEGRAM_SECRET_TOKEN", required=False)
 """Use this to verify that the webhook is coming from Telegram."""
@@ -124,15 +125,18 @@ def _handle_authorized_event(event, message_id):
     chat_id = str(message.chat.id)
     message_unique_id = message.message_id
 
-    logger.info(
-        "Processing message",
-        extra={
-            "message_id": message_id,
-            "telegram_message_id": message_unique_id,
-            "text_preview": text[:50],
-            "chat_id": chat_id,
-        },
+    # Save message to event store (inbox log)
+    now_iso = format_iso8601_zulu()
+    message_event = MessageReceived(
+        event_type="MessageReceived",
+        timestamp=now_iso,
+        raw_text=text,
+        source="telegram",
+        source_id=str(message_unique_id),
+        chat_id=chat_id,
+        received_at=now_iso,
     )
+    app().get_event_repository().append_event(message_event)
 
     # Pass the parsed event model to actions
     for prefix, action in COMMAND_DISPATCH:
