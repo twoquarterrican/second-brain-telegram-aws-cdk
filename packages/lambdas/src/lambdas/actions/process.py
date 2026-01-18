@@ -3,9 +3,11 @@
 import logging
 import json
 from anthropic.types import MessageParam
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Mapping
 from common.environments import get_env
 
+# Import the event model
+from lambdas.processor import TelegramWebhookEvent
 
 logger = logging.getLogger(__name__)
 ANTHROPIC_API_KEY = get_env("ANTHROPIC_API_KEY", required=False)
@@ -168,14 +170,18 @@ def process_message(message: str) -> Dict[str, Any]:
     return result
 
 
-def handle(
-    text: str,
-    send_telegram_message,
-    chat_id: str,
-    save_to_dynamodb_with_embedding,
-    **_kwargs,
-):
+def handle(event_model: TelegramWebhookEvent, **_kwargs) -> Mapping[str, Any]:
     """Process and classify a message, then save using embedding matching."""
+    from lambdas.telegram.telegram_messages import send_telegram_message
+    from lambdas.embedding_matcher import save_to_dynamodb_with_embedding
+
+    # Extract data from event model
+    message = event_model.message
+    if not message or not message.text:
+        return {"statusCode": 400, "body": "No message text"}
+
+    text = message.text
+    chat_id = str(message.chat.id)
     result = process_message(text)
 
     if result["confidence"] >= 60:
@@ -199,26 +205,9 @@ def handle(
     return {"statusCode": 200, "body": "Message processed successfully"}
 
 
-def process(event_model, **kwargs):
+def process(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
     """Main process action handler - dispatches to handle with dependencies."""
-    from lambdas.telegram.telegram_messages import send_telegram_message
-    from lambdas.embedding_matcher import save_to_dynamodb_with_embedding
-
-    # Extract data from the event model
-    message = event_model.message
-    if not message or not message.text:
-        return {"statusCode": 400, "body": "No message text"}
-
-    text = message.text
-    chat_id = str(message.chat.id)
-
-    return handle(
-        text=text,
-        send_telegram_message=send_telegram_message,
-        chat_id=chat_id,
-        save_to_dynamodb_with_embedding=save_to_dynamodb_with_embedding,
-        **kwargs,
-    )
+    return handle(event_model, **kwargs)
 
 
 # Export the process function so it can be called directly

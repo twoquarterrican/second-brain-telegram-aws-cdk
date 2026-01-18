@@ -1,10 +1,11 @@
 import json
 import uuid
 from json import JSONDecodeError
-from typing import Optional
+from typing import Optional, Callable, Mapping, Any
 
 from pydantic import BaseModel, Field
 from common.logging import get_logger
+
 from lambdas.actions import (
     digest,
     open_items,
@@ -18,35 +19,15 @@ from lambdas.actions import (
     process as process_action,
 )
 from common.environments import get_env
-
-
-# Pydantic models for Telegram webhook events
-class TelegramChat(BaseModel):
-    """Telegram chat information."""
-
-    id: int = Field(..., description="Unique chat identifier")
-
-
-class TelegramMessage(BaseModel):
-    """Telegram message structure."""
-
-    message_id: str = Field(..., min_length=8, max_length=8, description="Unique message identifier")
-    text: Optional[str] = Field(None, description="Message text content")
-    chat: TelegramChat = Field(..., description="Chat information")
-
-
-class TelegramWebhookEvent(BaseModel):
-    """Telegram webhook event structure."""
-
-    message: Optional[TelegramMessage] = Field(None, description="Message data")
-
+from common.logging import get_logger
+from lambdas.telegram.telegram_messages import TelegramWebhookEvent
 
 TELEGRAM_SECRET_TOKEN = get_env("TELEGRAM_SECRET_TOKEN", required=False)
 """Use this to verify that the webhook is coming from Telegram."""
 
 logger = get_logger(__name__)
 
-COMMAND_DISPATCH: list[tuple[Optional[str], Callable[[TelegramWebhookEvent]]], Mapping]= [
+COMMAND_DISPATCH: list[tuple[Optional[str], Callable[..., Mapping[str, Any]]]] = [
     ("/digest", digest.handle),
     ("/open", open_items.handle),
     ("/closed", closed_items.handle),
@@ -77,8 +58,8 @@ def handler(event, _context):
         response = _handle_authorized_event(event, message_id)
     except (ValueError, KeyError, TypeError, JSONDecodeError) as e:
         # Expected parsing/validation errors
-        log_warning_to_user(
-            "Error parsing webhook data",
+        logger.warning(
+            "Invalid webhook request data",
             extra={"error": str(e), "message_id": message_id},
             exc_info=True,
         )
@@ -88,8 +69,8 @@ def handler(event, _context):
         }
     except Exception as e:
         # Unexpected errors - log and return 500
-        log_warning_to_user(
-            "Unexpected error processing webhook",
+        logger.error(
+            "Error processing webhook",
             extra={"error": str(e), "message_id": message_id},
             exc_info=True,
         )
