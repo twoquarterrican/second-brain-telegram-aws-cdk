@@ -4,6 +4,8 @@ import json
 from datetime import datetime, timezone, timedelta
 from typing import Mapping, Any
 
+from anthropic.types import MessageParam
+
 from lambdas.adapter.out.persistence.dynamo_table import get_second_brain_table
 from lambdas.telegram.telegram_messages import (
     send_telegram_message,
@@ -12,7 +14,7 @@ from lambdas.telegram.telegram_messages import (
 from common.environments import get_env
 
 
-def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
+def handle(event_model: TelegramWebhookEvent) -> Mapping[str, Any]:
     """Auto-deduplicate items from last month."""
     import anthropic
 
@@ -25,7 +27,6 @@ def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
 
     # Get table and API key from environment
     table = get_second_brain_table()
-    ANTHROPIC_API_KEY = get_env("ANTHROPIC_API_KEY")
 
     send_telegram_message(chat_id, "🔄 Auto-deduplicating items from last month...")
 
@@ -83,20 +84,21 @@ Rules:
 - Use "keep" action to mark items as not duplicates"""
 
     result = None
-    if ANTHROPIC_API_KEY:
+    anthropic_api_key = get_env("ANTHROPIC_API_KEY", required=False)
+    if anthropic_api_key:
         try:
-            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            client = anthropic.Anthropic(api_key=anthropic_api_key)
             response = client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=2048,
-                messages=[{"role": "user", "content": auto_prompt}],
+                messages=[MessageParam(role="user", content=auto_prompt)],
             )
             content = response.content[0].text.strip()
             if content.startswith("```json"):
                 content = content[7:-3].strip()
             result = json.loads(content)
-        except Exception:
-            send_telegram_message(chat_id, "❌ AI auto-deduplication failed: {e}")
+        except Exception as e:
+            send_telegram_message(chat_id, f"❌ AI auto-deduplication failed: {e}")
 
     if not result or not result.get("actions"):
         send_telegram_message(chat_id, "📊 No automatic deduplication needed.")
@@ -153,11 +155,8 @@ Rules:
         elif action_type == "keep":
             kept_count += 1
 
-    lines = ["✅ *Auto-Deduplication Complete*"]
-    lines.append(f"\n📊 {result.get('summary', 'Done')}")
-    lines.append(f"\n• Merged: {merged_count}")
-    lines.append(f"• Deleted: {deleted_count}")
-    lines.append(f"• Kept: {kept_count}")
+    lines = ["✅ *Auto-Deduplication Complete*", f"\n📊 {result.get('summary', 'Done')}", f"\n• Merged: {merged_count}", f"• Deleted: {deleted_count}",
+             f"• Kept: {kept_count}"]
 
     send_telegram_message(chat_id, "\n".join(lines))
     return {"statusCode": 200, "body": "Duplicates-auto command processed"}

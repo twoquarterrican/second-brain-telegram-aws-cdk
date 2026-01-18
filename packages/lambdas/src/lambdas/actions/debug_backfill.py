@@ -10,7 +10,7 @@ from lambdas.telegram.telegram_messages import (
 )
 
 
-def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
+def handle(event_model: TelegramWebhookEvent) -> Mapping[str, Any]:
     """Backfill GSI for items from last week."""
     # Extract chat_id from event model
     message = event_model.message
@@ -50,9 +50,7 @@ def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
         send_telegram_message(chat_id, "📝 No items found from last week.")
         return {"statusCode": 200, "body": "Backfill command processed"}
 
-    lines = ["✅ *Backfill Complete*"]
-    lines.append(f"\nBackfilled {total_items} items from last week.")
-    lines.append("\n📊 By status:")
+    lines = ["✅ *Backfill Complete*", f"\nBackfilled {total_items} items from last week.", "\n📊 By status:"]
     for status, count in sorted(backfilled_by_status.items()):
         status_label = status if status != "none" else "no status"
         lines.append(f"   • {status_label}: {count}")
