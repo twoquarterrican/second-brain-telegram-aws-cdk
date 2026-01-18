@@ -42,7 +42,7 @@ def handler(event, _context):
     import uuid
 
     message_id = str(uuid.uuid4())[:8]
-    logger.info(f"[{message_id}] Received event: {json.dumps(event)}")
+    logger.info("Received event", extra={"message_id": message_id, "event": event})
 
     headers = event.get("headers", {})
     received_secret = headers.get("x-telegram-bot-api-secret-token")
@@ -68,7 +68,13 @@ def handler(event, _context):
             return {"statusCode": 200, "body": "No text to process"}
 
         logger.info(
-            f"[{message_id}] Processing message {message_unique_id}: {text[:50]}..."
+            "Processing message",
+            extra={
+                "message_id": message_id,
+                "telegram_message_id": message_unique_id,
+                "text_preview": text[:50],
+                "chat_id": chat_id,
+            },
         )
 
         for prefix, action in COMMAND_DISPATCH:
@@ -79,7 +85,11 @@ def handler(event, _context):
                 )
 
     except Exception as e:
-        logger.error(f"Error processing webhook: {e}", exc_info=True)
+        logger.error(
+            "Error processing webhook",
+            extra={"error": str(e), "message_id": message_id},
+            exc_info=True,
+        )
         return {
             "statusCode": 500,
             "body": json.dumps({"error": "Internal server error"}),

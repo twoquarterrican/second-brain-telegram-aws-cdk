@@ -246,6 +246,24 @@ def find_lambda_function(logical_id_prefix: str) -> Optional[str]:
     return None
 ```
 
+## Logging
+
+**Use structured logging in the lambdas package.** Import from `common.logging` and use `setup_logging(format_type="json")` in Lambda handlers. Avoid f-strings in log messages - prefer `extra` fields for structured data:
+
+```python
+from common.logging import setup_logging, get_logger
+
+# In handler
+setup_logging(level="INFO", format_type="json")
+logger = get_logger(__name__)
+
+# Good: structured logging
+logger.info("Processing message", extra={"message_id": msg_id, "chat_id": chat_id})
+
+# Avoid: f-strings in log messages
+logger.info(f"Processing message {msg_id}")  # Don't do this
+```
+
 ## Exception Handling
 
 **Critical: Let exceptions propagate. Do not suppress them.**
