@@ -24,10 +24,12 @@ The application depends only on the AiModelApi interface, making it easy to:
 
 import anthropic
 import json
+
+from anthropic.types import MessageParam
 from openai import OpenAI
 import boto3
 from typing import Any, List
-from lambdas.app.port.out import AiModelApi
+from lambdas.app.port.out import AiModelApi, InvokeModelResponse
 from common.environments import get_env
 
 
@@ -44,20 +46,19 @@ class AnthropicModelApi(AiModelApi):
         self.client = anthropic.Anthropic(api_key=self.api_key)
         self.model = "claude-3-sonnet-20240229"  # Default model
 
-    def invoke_model(self, prompt: str, **kwargs: Any) -> str:
+    def invoke_model(self, prompt: str, **kwargs: Any) -> InvokeModelResponse:
         """Invoke Claude model for text generation."""
         model = kwargs.get("model", self.model)
         max_tokens = kwargs.get("max_tokens", 1000)
 
-        try:
-            response = self.client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return response.content[0].text
-        except Exception as e:
-            raise Exception(f"Anthropic API error: {str(e)}")
+        response = self.client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[MessageParam(role="user", content=prompt)],
+        )
+        return InvokeModelResponse(
+            content=response.content[0].text, model_name=self.model
+        )
 
     def compute_embedding(self, text: str, **kwargs: Any) -> List[float]:
         """Compute embeddings using Anthropic's embedding model."""
@@ -80,7 +81,7 @@ class OpenaiModelApi(AiModelApi):
         self.model = "gpt-4"  # Default model
         self.embedding_model = "text-embedding-ada-002"  # Default embedding model
 
-    def invoke_model(self, prompt: str, **kwargs: Any) -> str:
+    def invoke_model(self, prompt: str, **kwargs: Any) -> InvokeModelResponse:
         """Invoke GPT model for text generation."""
         model = kwargs.get("model", self.model)
         max_tokens = kwargs.get("max_tokens", 1000)
@@ -93,7 +94,10 @@ class OpenaiModelApi(AiModelApi):
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
-            return response.choices[0].message.content
+            return InvokeModelResponse(
+                content=response.choices[0].message.content,
+                model_name=model,
+            )
         except Exception as e:
             raise Exception(f"OpenAI API error: {str(e)}")
 
@@ -125,7 +129,7 @@ class BedrockModelApi(AiModelApi):
             "amazon.titan-embed-text-v2:0"  # Default embedding model
         )
 
-    def invoke_model(self, prompt: str, **kwargs: Any) -> str:
+    def invoke_model(self, prompt: str, **kwargs: Any) -> InvokeModelResponse:
         """Invoke Bedrock model for text generation."""
         model_id = kwargs.get("model_id", self.model_id)
         max_tokens = kwargs.get("max_tokens", 1000)
@@ -145,7 +149,10 @@ class BedrockModelApi(AiModelApi):
             )
 
             response_body = json.loads(response["body"].read())
-            return response_body["content"][0]["text"]
+            return InvokeModelResponse(
+                content=response_body["content"][0]["text"],
+                model_name=model_id,
+            )
         except Exception as e:
             raise Exception(f"AWS Bedrock API error: {str(e)}")
 
@@ -191,7 +198,7 @@ class CompositeAiModelApi(AiModelApi):
         self.text_api = text_api
         self.embedding_api = embedding_api
 
-    def invoke_model(self, prompt: str, **kwargs: Any) -> str:
+    def invoke_model(self, prompt: str, **kwargs: Any) -> InvokeModelResponse:
         """
         Invoke AI model for text generation using the text API.
         """

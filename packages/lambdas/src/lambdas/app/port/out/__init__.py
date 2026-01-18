@@ -21,6 +21,17 @@ This allows for:
 from abc import ABC, abstractmethod
 from typing import Any, List
 
+from pydantic import BaseModel
+
+__all__ = ["InvokeModelResponse", "AiModelApi"]
+
+
+class InvokeModelResponse(BaseModel):
+    """Output for AI model invocations."""
+
+    model_name: str
+    content: str
+
 
 class AiModelApi(ABC):
     """
@@ -32,7 +43,7 @@ class AiModelApi(ABC):
     """
 
     @abstractmethod
-    def invoke_model(self, prompt: str, **kwargs: Any) -> str:
+    def invoke_model(self, prompt: str, **kwargs: Any) -> InvokeModelResponse:
         """
         Invoke an AI model with a text prompt.
 
@@ -41,7 +52,7 @@ class AiModelApi(ABC):
             **kwargs: Additional parameters specific to the model provider
 
         Returns:
-            The model's text response
+            The model's text response and the name of the model used
 
         Raises:
             Exception: If the model invocation fails

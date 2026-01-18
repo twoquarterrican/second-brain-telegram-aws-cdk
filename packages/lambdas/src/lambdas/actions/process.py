@@ -36,11 +36,12 @@ Message: {message}"""
 def _classify(message: str, source_message: MessageReceived) -> MessageClassified:
     """Classify a message using AI and save classification event."""
     try:
-        content = (
+        response = (
             app()
             .get_ai_model_api()
             .invoke_model(prompt=CLASSIFICATION_PROMPT.format(message=message))
         )
+        content = response.content
     except Exception as e:
         error_msg = "AI classification attempt(s) failed"
         log_warning_to_user(error_msg, exc_info=True)
@@ -75,7 +76,7 @@ def _classify(message: str, source_message: MessageReceived) -> MessageClassifie
         raw_text=message,
         category=category,
         confidence_pct=confidence_pct,
-        classified_by="claude",  # TODO: Get actual model name from AI API
+        classified_by=response.model_name,
         source_message=source_message,
     )
 
