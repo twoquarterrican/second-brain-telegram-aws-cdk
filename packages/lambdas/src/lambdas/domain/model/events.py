@@ -6,11 +6,28 @@ Events are stored in a single DynamoDB table with PK/SK patterns.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
-from pydantic import BaseModel, Field
+from typing import Literal, Optional, Tuple
+from pydantic import BaseModel, Field, field_validator
 import boto3
 from botocore.exceptions import ClientError
 from common.timestamps import format_iso8601_zulu
+
+
+class ClassificationModel(BaseModel):
+    """Model for AI classification results."""
+
+    category: Literal["People", "Projects", "Ideas", "Admin"]
+    name: Optional[str] = None
+    status: Optional[str] = None
+    next_action: Optional[str] = None
+    notes: Optional[str] = None
+    confidence: float = Field(ge=0, le=100)
+
+    @field_validator("confidence", mode="after")
+    @classmethod
+    def validate_confidence(cls, v):
+        """Normalize confidence to 0-100 range."""
+        return min(100, max(0, int(round(v))))
 
 
 class Event(BaseModel, ABC):
@@ -133,18 +150,26 @@ class MessageClassified(Event):
     @classmethod
     def create_from_classification(
         cls,
-        raw_text: str,
-        category: str,
-        confidence_pct: int,
-        classified_by: str,
         source_message: "MessageReceived",
+        raw_text: str,
+        classification_model: ClassificationModel,
+        classified_by: str = "claude",
     ) -> "MessageClassified":
-        """Factory method to create a MessageClassified event from classification result."""
+        """Factory method to create a MessageClassified event from classification result.
+
+        Args:
+            source_message: The original MessageReceived event
+            raw_text: The raw message text
+            classification_model: The classification results from AI
+            classified_by: Name of the AI model that performed classification
+
+        Returns:
+            MessageClassified event ready to be saved
+        """
         now_iso = format_iso8601_zulu()
-        confidence_score = min(100, max(0, confidence_pct)) / 100.0
 
         # Create item identifiers
-        category_lower = category.lower()
+        category_lower = classification_model.category.lower()
         item_id = source_message.source_id[:16]  # Use first 16 chars of source ID
         item_pk = f"{category_lower}#{item_id}"
         item_sk = "PROFILE"
@@ -152,8 +177,8 @@ class MessageClassified(Event):
         return cls(
             event_type="MessageClassified",
             timestamp=now_iso,
-            classification=category,
-            confidence_score=confidence_score,
+            classification=classification_model.category,
+            confidence_score=classification_model.confidence / 100.0,
             classified_by=classified_by,
             classified_at=now_iso,
             item_pk=item_pk,
