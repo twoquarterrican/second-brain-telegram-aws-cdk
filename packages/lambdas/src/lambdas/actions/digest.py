@@ -2,21 +2,17 @@
 
 from typing import Mapping, Any
 from lambdas.digest import generate_digest_summary
-from lambdas.telegram.telegram_messages import (
-    send_telegram_message,
-    TelegramWebhookEvent,
-)
+from lambdas.telegram.telegram_messages import send_telegram_message
+from lambdas.events import MessageReceived
 
 
-def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
+def handle(message_received_event: MessageReceived, **kwargs) -> Mapping[str, Any]:
     """Generate and send digest."""
-    # Extract text from event model
-    message = event_model.message
-    if not message or not message.text:
-        return {"statusCode": 400, "body": "No message text"}
+    text = message_received_event.raw_text
+    chat_id = message_received_event.chat_id
 
-    text = message.text
-    chat_id = str(message.chat.id)
+    if not chat_id:
+        return {"statusCode": 400, "body": "No chat ID"}
 
     digest_type = "daily" if "daily" in text.lower() else "weekly"
     summary = generate_digest_summary(digest_type)

@@ -4,20 +4,16 @@ from datetime import datetime, timezone, timedelta
 from typing import Mapping, Any
 
 from lambdas.adapter.out.persistence.dynamo_table import get_second_brain_table
-from lambdas.telegram.telegram_messages import (
-    send_telegram_message,
-    TelegramWebhookEvent,
-)
+from lambdas.telegram.telegram_messages import send_telegram_message
+from lambdas.events import MessageReceived
 
 
-def handle(event_model: TelegramWebhookEvent) -> Mapping[str, Any]:
+def handle(message_received_event: MessageReceived) -> Mapping[str, Any]:
     """Backfill GSI for items from last week."""
-    # Extract chat_id from event model
-    message = event_model.message
-    if not message:
-        return {"statusCode": 400, "body": "No message data"}
+    chat_id = message_received_event.chat_id
 
-    chat_id = str(message.chat.id)
+    if not chat_id:
+        return {"statusCode": 400, "body": "No chat ID"}
 
     # Get table from environment
     table = get_second_brain_table()
@@ -50,7 +46,11 @@ def handle(event_model: TelegramWebhookEvent) -> Mapping[str, Any]:
         send_telegram_message(chat_id, "📝 No items found from last week.")
         return {"statusCode": 200, "body": "Backfill command processed"}
 
-    lines = ["✅ *Backfill Complete*", f"\nBackfilled {total_items} items from last week.", "\n📊 By status:"]
+    lines = [
+        "✅ *Backfill Complete*",
+        f"\nBackfilled {total_items} items from last week.",
+        "\n📊 By status:",
+    ]
     for status, count in sorted(backfilled_by_status.items()):
         status_label = status if status != "none" else "no status"
         lines.append(f"   • {status_label}: {count}")

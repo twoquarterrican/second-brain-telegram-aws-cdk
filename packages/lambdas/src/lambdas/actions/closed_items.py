@@ -2,20 +2,16 @@
 
 from typing import Mapping, Any
 from lambdas.digest import get_completed_items
-from lambdas.telegram.telegram_messages import (
-    send_telegram_message,
-    TelegramWebhookEvent,
-)
+from lambdas.telegram.telegram_messages import send_telegram_message
+from lambdas.events import MessageReceived
 
 
-def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
+def handle(message_received_event: MessageReceived, **kwargs) -> Mapping[str, Any]:
     """List completed items grouped by category."""
-    # Extract chat_id from event model
-    message = event_model.message
-    if not message:
-        return {"statusCode": 400, "body": "No message data"}
+    chat_id = message_received_event.chat_id
 
-    chat_id = str(message.chat.id)
+    if not chat_id:
+        return {"statusCode": 400, "body": "No chat ID"}
     items = get_completed_items(days_back=30)
     if items:
         categories = {}

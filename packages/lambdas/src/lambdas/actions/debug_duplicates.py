@@ -5,23 +5,19 @@ from datetime import datetime, timezone, timedelta
 from typing import Mapping, Any
 
 from lambdas.adapter.out.persistence.dynamo_table import get_second_brain_table
-from lambdas.telegram.telegram_messages import (
-    send_telegram_message,
-    TelegramWebhookEvent,
-)
+from lambdas.telegram.telegram_messages import send_telegram_message
 from common.environments import get_env
+from lambdas.events import MessageReceived
 
 
-def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
+def handle(message_received_event: MessageReceived, **kwargs) -> Mapping[str, Any]:
     """Find potential duplicate items."""
     import anthropic
 
-    # Extract chat_id from event model
-    message = event_model.message
-    if not message:
-        return {"statusCode": 400, "body": "No message data"}
+    chat_id = message_received_event.chat_id
 
-    chat_id = str(message.chat.id)
+    if not chat_id:
+        return {"statusCode": 400, "body": "No chat ID"}
 
     # Get table and API key from environment
     table = get_second_brain_table()

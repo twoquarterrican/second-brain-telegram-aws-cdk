@@ -7,23 +7,19 @@ from typing import Mapping, Any
 from anthropic.types import MessageParam
 
 from lambdas.adapter.out.persistence.dynamo_table import get_second_brain_table
-from lambdas.telegram.telegram_messages import (
-    send_telegram_message,
-    TelegramWebhookEvent,
-)
+from lambdas.telegram.telegram_messages import send_telegram_message
 from common.environments import get_env
+from lambdas.events import MessageReceived
 
 
-def handle(event_model: TelegramWebhookEvent) -> Mapping[str, Any]:
+def handle(message_received_event: MessageReceived) -> Mapping[str, Any]:
     """Auto-deduplicate items from last month."""
     import anthropic
 
-    # Extract chat_id from event model
-    message = event_model.message
-    if not message:
-        return {"statusCode": 400, "body": "No message data"}
+    chat_id = message_received_event.chat_id
 
-    chat_id = str(message.chat.id)
+    if not chat_id:
+        return {"statusCode": 400, "body": "No chat ID"}
 
     # Get table and API key from environment
     table = get_second_brain_table()
@@ -155,8 +151,13 @@ Rules:
         elif action_type == "keep":
             kept_count += 1
 
-    lines = ["✅ *Auto-Deduplication Complete*", f"\n📊 {result.get('summary', 'Done')}", f"\n• Merged: {merged_count}", f"• Deleted: {deleted_count}",
-             f"• Kept: {kept_count}"]
+    lines = [
+        "✅ *Auto-Deduplication Complete*",
+        f"\n📊 {result.get('summary', 'Done')}",
+        f"\n• Merged: {merged_count}",
+        f"• Deleted: {deleted_count}",
+        f"• Kept: {kept_count}",
+    ]
 
     send_telegram_message(chat_id, "\n".join(lines))
     return {"statusCode": 200, "body": "Duplicates-auto command processed"}

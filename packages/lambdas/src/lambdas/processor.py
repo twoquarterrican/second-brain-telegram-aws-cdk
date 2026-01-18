@@ -138,12 +138,9 @@ def _handle_authorized_event(event, message_id):
     )
     app().get_event_repository().append_event(message_event)
 
-    # Pass the parsed event model and message event to actions
+    # Pass the message received event to actions
     for prefix, action in COMMAND_DISPATCH:
         if prefix is None or text.startswith(prefix):
-            return action(
-                event_model=telegram_event,
-                message_received_event=message_event,
-            )
+            return action(message_received_event=message_event)
 
     return None

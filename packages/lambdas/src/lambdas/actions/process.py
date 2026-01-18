@@ -2,14 +2,12 @@
 
 import logging
 import json
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 from common.logging import log_warning_to_user
 from lambdas.app import app
 from lambdas.events import MessageClassified, MessageReceived
 from lambdas.exceptions import MessageClassificationFailedException
-
-# Import the event model
-from lambdas.telegram.telegram_messages import TelegramWebhookEvent
+from lambdas.telegram.telegram_messages import send_telegram_message
 
 logger = logging.getLogger(__name__)
 CLASSIFICATION_PROMPT = """Classify the following message into one of these categories: People, Projects, Ideas, Admin.
@@ -85,27 +83,15 @@ def _classify(message: str, source_message: MessageReceived) -> MessageClassifie
     return classified_event
 
 
-def handle(
-    event_model: TelegramWebhookEvent,
-    message_received_event: Optional[MessageReceived] = None,
-) -> Mapping[str, Any]:
+def handle(message_received_event: MessageReceived, **kwargs) -> Mapping[str, Any]:
     """Process and classify a message, then save using embedding matching."""
-    from lambdas.telegram.telegram_messages import send_telegram_message
     from lambdas.embedding_matcher import save_to_dynamodb_with_embedding
 
-    # Extract data from event model
-    message = event_model.message
-    if not message or not message.text:
-        return {"statusCode": 400, "body": "No message text"}
+    text = message_received_event.raw_text
+    chat_id = message_received_event.chat_id
 
-    text = message.text
-    chat_id = str(message.chat.id)
-
-    if message_received_event is None:
-        return {
-            "statusCode": 500,
-            "body": "Internal error: message_received_event not provided",
-        }
+    if not chat_id:
+        return {"statusCode": 400, "body": "No chat ID"}
 
     try:
         classified_event = _classify(text, message_received_event)
@@ -146,9 +132,9 @@ def handle(
     return {"statusCode": 200, "body": "Message processed successfully"}
 
 
-def process(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
+def process(message_received_event: MessageReceived, **kwargs) -> Mapping[str, Any]:
     """Main process action handler - dispatches to handle with dependencies."""
-    return handle(event_model, **kwargs)
+    return handle(message_received_event, **kwargs)
 
 
 # Export the process function so it can be called directly

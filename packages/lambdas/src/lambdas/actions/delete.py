@@ -3,21 +3,17 @@
 from typing import Mapping, Any
 
 from lambdas.adapter.out.persistence.dynamo_table import get_second_brain_table
-from lambdas.telegram.telegram_messages import (
-    send_telegram_message,
-    TelegramWebhookEvent,
-)
+from lambdas.telegram.telegram_messages import send_telegram_message
+from lambdas.events import MessageReceived
 
 
-def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
+def handle(message_received_event: MessageReceived, **kwargs) -> Mapping[str, Any]:
     """Delete an item by ID."""
-    # Extract text and chat_id from event model
-    message = event_model.message
-    if not message or not message.text:
-        return {"statusCode": 400, "body": "No message text"}
+    text = message_received_event.raw_text
+    chat_id = message_received_event.chat_id
 
-    text = message.text
-    chat_id = str(message.chat.id)
+    if not chat_id:
+        return {"statusCode": 400, "body": "No chat ID"}
 
     # Get table from environment
     table = get_second_brain_table()
