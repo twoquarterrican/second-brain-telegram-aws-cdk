@@ -27,7 +27,6 @@ import json
 from openai import OpenAI
 import boto3
 from typing import Any, List
-
 from lambdas.app.port.out import AiModelApi
 from common.environments import get_env
 
@@ -167,3 +166,39 @@ class BedrockModelApi(AiModelApi):
             return response_body["embedding"]
         except Exception as e:
             raise Exception(f"AWS Bedrock embedding API error: {str(e)}")
+
+
+class CompositeAiModelApi(AiModelApi):
+    """
+    Composite adapter that delegates to two AiModelApi instances.
+
+    Delegates specific operations to specific APIs:
+    - invoke_model: Uses the text generation API
+    - compute_embedding: Uses the embedding API
+
+    This allows using different providers for different AI operations,
+    optimizing for the best model for each use case.
+    """
+
+    def __init__(self, text_api: AiModelApi, embedding_api: AiModelApi):
+        """
+        Initialize composite API with separate providers for different operations.
+
+        Args:
+            text_api: The AI API to use for text generation (invoke_model)
+            embedding_api: The AI API to use for embeddings (compute_embedding)
+        """
+        self.text_api = text_api
+        self.embedding_api = embedding_api
+
+    def invoke_model(self, prompt: str, **kwargs: Any) -> str:
+        """
+        Invoke AI model for text generation using the text API.
+        """
+        return self.text_api.invoke_model(prompt, **kwargs)
+
+    def compute_embedding(self, text: str, **kwargs: Any) -> List[float]:
+        """
+        Compute embeddings using the embedding API.
+        """
+        return self.embedding_api.compute_embedding(text, **kwargs)
