@@ -41,9 +41,7 @@ class SecondBrainStack(Stack):
             self,
             "SecondBrainTable",
             table_name="SecondBrain",
-            partition_key=dynamodb.Attribute(
-                name="PK", type=dynamodb.AttributeType.STRING
-            ),
+            partition_key=dynamodb.Attribute(name="PK", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="SK", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
@@ -52,12 +50,8 @@ class SecondBrainStack(Stack):
         # GSI for status queries
         table.add_global_secondary_index(
             index_name="StatusIndex",
-            partition_key=dynamodb.Attribute(
-                name="status", type=dynamodb.AttributeType.STRING
-            ),
-            sort_key=dynamodb.Attribute(
-                name="created_at", type=dynamodb.AttributeType.STRING
-            ),
+            partition_key=dynamodb.Attribute(name="status", type=dynamodb.AttributeType.STRING),
+            sort_key=dynamodb.Attribute(name="created_at", type=dynamodb.AttributeType.STRING),
             projection_type=dynamodb.ProjectionType.ALL,
         )
 
@@ -106,7 +100,7 @@ class SecondBrainStack(Stack):
                     command=[
                         "bash",
                         "-c",
-                        "pip install uv && uv pip install --requirements pyproject.toml --target /asset-output/python && cp -r /common-src/src/common /asset-output/python/",
+                        "pip install uv && uv pip install --group lambdas --target /asset-output/python && cp -r /common-src/src/common /asset-output/python/",
                     ],
                     user="root",
                     volumes=[
@@ -221,9 +215,7 @@ class SecondBrainStack(Stack):
         weekly_rule.add_target(targets.LambdaFunction(digest_lambda))
 
         # Role for triggering lambdas (assumed by scripts/automation)
-        trigger_role = self._create_trigger_role(
-            table=table, vector_bucket=vector_bucket
-        )
+        trigger_role = self._create_trigger_role(table=table, vector_bucket=vector_bucket)
 
         # Outputs
         CfnOutput(
@@ -232,9 +224,7 @@ class SecondBrainStack(Stack):
             value=function_url.url,
             description="URL for Telegram webhook",
         )
-        CfnOutput(
-            self, "TableName", value=table.table_name, description="DynamoDB table name"
-        )
+        CfnOutput(self, "TableName", value=table.table_name, description="DynamoDB table name")
         CfnOutput(
             self,
             "VectorBucketName",
