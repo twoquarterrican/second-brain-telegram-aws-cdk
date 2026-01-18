@@ -1,6 +1,8 @@
 import json
-import logging
+import uuid
+from json import JSONDecodeError
 
+from common.logging import get_logger
 from lambdas.actions import (
     digest,
     open_items,
@@ -15,8 +17,7 @@ from lambdas.actions import (
 )
 from common.environments import get_env
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = get_logger(__name__)
 
 
 TELEGRAM_SECRET_TOKEN = get_env("TELEGRAM_SECRET_TOKEN", required=False)
@@ -39,8 +40,6 @@ COMMAND_DISPATCH = [
 
 def handler(event, _context):
     """Main Lambda handler for Telegram webhook."""
-    import uuid
-
     message_id = str(uuid.uuid4())[:8]
     logger.info("Received event", extra={"message_id": message_id, "event": event})
 
@@ -53,49 +52,77 @@ def handler(event, _context):
         return {"statusCode": 403, "body": "Forbidden"}
 
     try:
-        if isinstance(event.get("body"), str):
-            webhook_data = json.loads(event["body"])
-        else:
-            webhook_data = event["body"]
-
-        message = webhook_data.get("message", {})
-        text = message.get("text", "")
-        chat_id = str(message.get("chat", {}).get("id", ""))
-        message_unique_id = message.get("message_id", "")
-
-        if not text:
-            logger.warning("No text in message")
-            return {"statusCode": 200, "body": "No text to process"}
-
-        logger.info(
-            "Processing message",
-            extra={
-                "message_id": message_id,
-                "telegram_message_id": message_unique_id,
-                "text_preview": text[:50],
-                "chat_id": chat_id,
-            },
-        )
-
-        for prefix, action in COMMAND_DISPATCH:
-            if prefix is None or text.startswith(prefix):
-                return action(
-                    text=text,
-                    chat_id=chat_id,
-                )
-
-    except Exception as e:
+        response = _handle_authorized_event(event, message_id)
+    except (ValueError, KeyError, TypeError, JSONDecodeError) as e:
+        # Expected parsing/validation errors
         logger.error(
-            "Error processing webhook",
+            "Error parsing webhook data",
             extra={"error": str(e), "message_id": message_id},
             exc_info=True,
         )
-        return {
+        response = {
+            "statusCode": 400,
+            "body": json.dumps({"error": "Invalid request format"}),
+        }
+    except Exception as e:
+        # Unexpected errors - log and return 500
+        logger.error(
+            "Unexpected error processing webhook",
+            extra={"error": str(e), "message_id": message_id},
+            exc_info=True,
+        )
+        response = {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Internal server error"}),
+        }
+    except Exception as e:
+        # Unexpected errors - log and return 500
+        logger.error(
+            "Unexpected error processing webhook",
+            extra={"error": str(e), "message_id": message_id},
+            exc_info=True,
+        )
+        response = {
             "statusCode": 500,
             "body": json.dumps({"error": "Internal server error"}),
         }
 
-    return {
+    return response or {
         "statusCode": 200,
-        "body": json.dumps({"message": "Message processed successfully"}),
+        "body": json.dumps({"message": "Message ignored"}),
     }
+
+
+def _handle_authorized_event(event, message_id):
+    if isinstance(event.get("body"), str):
+        webhook_data = json.loads(event["body"])
+    else:
+        webhook_data = event["body"]
+
+    message = webhook_data.get("message", {})
+    text = message.get("text", "")
+    chat_id = str(message.get("chat", {}).get("id", ""))
+    message_unique_id = message.get("message_id", "")
+
+    if not text:
+        logger.warning("No text in message")
+        return {"statusCode": 200, "body": "No text to process"}
+
+    logger.info(
+        "Processing message",
+        extra={
+            "message_id": message_id,
+            "telegram_message_id": message_unique_id,
+            "text_preview": text[:50],
+            "chat_id": chat_id,
+        },
+    )
+
+    for prefix, action in COMMAND_DISPATCH:
+        if prefix is None or text.startswith(prefix):
+            return action(
+                text=text,
+                chat_id=chat_id,
+            )
+
+    return None
