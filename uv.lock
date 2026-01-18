@@ -915,7 +915,6 @@ dependencies = [
 
 [package.dev-dependencies]
 test = [
-    { name = "moto" },
     { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "pytest", version = "9.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
 ]
@@ -933,10 +932,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-test = [
-    { name = "moto", specifier = ">=4.0.0" },
-    { name = "pytest", specifier = ">=7.0.0" },
-]
+test = [{ name = "pytest", specifier = ">=7.0.0" }]
 
 [[package]]
 name = "librt"
@@ -1789,6 +1785,7 @@ dev = [
     { name = "black", version = "25.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "black", version = "25.12.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "flake8" },
+    { name = "moto" },
     { name = "mypy" },
     { name = "pre-commit", version = "4.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "pre-commit", version = "4.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -1818,6 +1815,7 @@ requires-dist = [
 dev = [
     { name = "black", specifier = ">=22.0.0" },
     { name = "flake8", specifier = ">=4.0.0" },
+    { name = "moto", specifier = ">=4.0.0" },
     { name = "mypy", specifier = ">=1.0.0" },
     { name = "pre-commit", specifier = ">=4.3.0" },
     { name = "pytest", specifier = ">=7.0.0" },

@@ -45,6 +45,7 @@ scripts = { workspace = true }
 [dependency-groups]
 dev = [
     "pytest>=7.0.0",
+    "moto>=4.0.0",
     "black>=22.0.0",
     "flake8>=4.0.0",
     "ruff>=0.1.0",
