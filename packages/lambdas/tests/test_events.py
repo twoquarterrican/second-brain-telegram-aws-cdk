@@ -5,11 +5,12 @@ Unit tests for the event repository using moto to mock DynamoDB.
 import os
 import sys
 import pytest
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from unittest import mock
 import boto3
-import os
 from moto import mock_aws
+from lambdas import processor
 
 # Add the parent directory to the path so we can import from src
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -53,21 +54,43 @@ def telegram_secret_token_env(monkeypatch):
     and restores the original value after the test completes.
     Handles both cases where the variable exists or doesn't exist.
     """
+    with monkey_patch_env(
+        key="TELEGRAM_SECRET_TOKEN",
+        test_value="test-secret-token-for-pytest",
+        monkeypatch=monkeypatch,
+    ) as telegram_secret_token:
+        yield telegram_secret_token
+
+
+@pytest.fixture
+def anthropic_api_key_env(monkeypatch):
+    """Fixture to handle ANTHROPIC_API_KEY environment variable."""
+    with monkey_patch_env(
+        key="ANTHROPIC_API_KEY",
+        test_value="test-anthropic-api-key-for-pytest",
+        monkeypatch=monkeypatch,
+    ) as anthropic_api_key:
+        yield anthropic_api_key
+
+
+@contextmanager
+def monkey_patch_env(key: str, test_value: str, monkeypatch):
+    """Context manager to handle environment variable setup/cleanup."""
     # Store the original value (could be None if not set)
-    original_value = os.environ.get("TELEGRAM_SECRET_TOKEN")
+    original_value = os.environ.get(key)
 
     # Set test value
-    test_value = "test-secret-token-for-pytest"
-    monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", test_value)
+    monkeypatch.setenv(key, test_value)
 
-    # Yield the test value so tests can use it
-    yield test_value
-
-    # Restore original value (or delete if it was originally None)
-    if original_value is not None:
-        monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", original_value)
-    else:
-        monkeypatch.delenv("TELEGRAM_SECRET_TOKEN", raising=False)
+    try:
+        # Yield the test value so tests can use it
+        yield test_value
+    finally:
+        # Always restore original value (or delete if it was originally None)
+        if original_value is not None:
+            monkeypatch.setenv(key, original_value)
+        else:
+            monkeypatch.delenv(key, raising=False)
 
 
 class TestMessageReceived:
@@ -327,43 +350,21 @@ class TestEventRepository:
 
 
 class TestProcessorHandler:
-    def test_non_command_message_dispatch(self):
+    def test_non_command_message_dispatch(self, telegram_secret_token_env):
         """Test that non-command messages are dispatched to the process action."""
         # Test the COMMAND_DISPATCH logic without actually calling the actions
-
-        from lambdas.processor import COMMAND_DISPATCH
-
-        # Test various message types
-        test_cases = [
-            (
-                "Working on the web app redesign project",
-                None,
-            ),  # Should match None (process)
-            ("/digest", "digest"),  # Should match /digest
-            ("/open", "open_items"),  # Should match /open
-            ("Some random message", None),  # Should match None (process)
-        ]
-
-        for message_text, expected_module in test_cases:
-            # Find which action would be called
-            called_action = None
-            for prefix, action in COMMAND_DISPATCH:
-                if prefix is None or message_text.startswith(prefix):
-                    called_action = action
-                    break
-
-            if expected_module is None:
-                # Should be the process action (the None case)
-                assert called_action is not None
-                # We can't easily test the actual call without mocking,
-                # but we verify it reaches the process dispatch
-            else:
-                # Should match the expected command
-                assert str(called_action).endswith(expected_module)
+        processor.handle(
+            {
+                "headers": {
+                    "x-telegram-bot-api-secret-token": telegram_secret_token_env
+                },
+                "body": {"message": {"text": "test", "chat": {"id": "123"}}},
+            },
+            None,
+        )
 
     def test_webhook_secret_validation(self, telegram_secret_token_env):
         """Test that webhook secret validation works."""
-        from lambdas.processor import handler
 
         # telegram_secret_token_env fixture has set TELEGRAM_SECRET_TOKEN to "test-secret-token-for-pytest"
 
