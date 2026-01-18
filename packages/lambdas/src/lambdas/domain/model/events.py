@@ -23,6 +23,7 @@ class ClassificationModel(BaseModel):
     notes: Optional[str] = None
     confidence: float = Field(ge=0, le=100)
 
+    # noinspection PyNestedDecorators
     @field_validator("confidence", mode="after")
     @classmethod
     def validate_confidence(cls, v):
@@ -96,9 +97,7 @@ class MessageClassified(Event):
     classification: str = Field(
         ..., description="AI classification: 'People', 'Projects', 'Ideas', 'Admin'"
     )
-    confidence_score: float = Field(
-        ..., ge=0.0, le=1.0, description="AI confidence score"
-    )
+    confidence: int = Field(..., ge=0, le=100, description="AI confidence score")
 
     # Model information
     classified_by: str = Field(..., description="AI model used for classification")
@@ -116,6 +115,11 @@ class MessageClassified(Event):
 
     # Original message for replay capability
     raw_text: str = Field(..., description="Original message text, unmodified")
+
+    # Full classification model for replay capability
+    classification_model: ClassificationModel = Field(
+        ..., description="Full classification results from AI"
+    )
 
     def get_pk(self) -> str:
         return self.build_pk(self.source)
@@ -148,18 +152,18 @@ class MessageClassified(Event):
         return classified_at, sequence
 
     @classmethod
-    def create_from_classification(
+    def create_from_classification_model(
         cls,
         source_message: "MessageReceived",
         raw_text: str,
         classification_model: ClassificationModel,
-        classified_by: str = "claude",
+        classified_by: str,
     ) -> "MessageClassified":
         """Factory method to create a MessageClassified event from classification result.
 
         Args:
             source_message: The original MessageReceived event
-            raw_text: The raw message text
+            raw_text: The raw message text returned from the model before parsing
             classification_model: The classification results from AI
             classified_by: Name of the AI model that performed classification
 
@@ -178,7 +182,7 @@ class MessageClassified(Event):
             event_type="MessageClassified",
             timestamp=now_iso,
             classification=classification_model.category,
-            confidence_score=classification_model.confidence / 100.0,
+            confidence=int(classification_model.confidence),
             classified_by=classified_by,
             classified_at=now_iso,
             item_pk=item_pk,
@@ -186,6 +190,7 @@ class MessageClassified(Event):
             source_event_sk=source_message.get_sk(),
             source=source_message.source,
             raw_text=raw_text,
+            classification_model=classification_model,
         )
 
 
@@ -268,7 +273,7 @@ class EventRepository:
             item.update(
                 {
                     "classification": {"S": event.classification},
-                    "confidence_score": {"N": str(event.confidence_score)},
+                    "confidence": {"N": str(event.confidence)},
                     "classified_by": {"S": event.classified_by},
                     "classified_at": {"S": event.classified_at},
                     "item_pk": {"S": event.item_pk},
@@ -276,6 +281,9 @@ class EventRepository:
                     "source_event_sk": {"S": event.source_event_sk},
                     "source": {"S": event.source},
                     "raw_text": {"S": event.raw_text},
+                    "classification_model": {
+                        "S": event.classification_model.model_dump_json()
+                    },
                 }
             )
 
