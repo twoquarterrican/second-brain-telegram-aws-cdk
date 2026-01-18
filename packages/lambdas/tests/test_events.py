@@ -8,6 +8,7 @@ import pytest
 from datetime import datetime, timezone
 from unittest import mock
 import boto3
+import os
 from moto import mock_aws
 
 # Add the parent directory to the path so we can import from src
@@ -42,6 +43,31 @@ def create_test_repo():
     # Create client within the mock context
     dynamodb_client = boto3.client("dynamodb", region_name="us-east-1")
     return EventRepository("test-events", dynamodb_client)
+
+
+@pytest.fixture
+def telegram_secret_token_env(monkeypatch):
+    """Fixture to handle TELEGRAM_SECRET_TOKEN environment variable.
+
+    Stores the original value, sets it to a test value for the test,
+    and restores the original value after the test completes.
+    Handles both cases where the variable exists or doesn't exist.
+    """
+    # Store the original value (could be None if not set)
+    original_value = os.environ.get("TELEGRAM_SECRET_TOKEN")
+
+    # Set test value
+    test_value = "test-secret-token-for-pytest"
+    monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", test_value)
+
+    # Yield the test value so tests can use it
+    yield test_value
+
+    # Restore original value (or delete if it was originally None)
+    if original_value is not None:
+        monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", original_value)
+    else:
+        monkeypatch.delenv("TELEGRAM_SECRET_TOKEN", raising=False)
 
 
 class TestMessageReceived:
@@ -335,17 +361,15 @@ class TestProcessorHandler:
                 # Should match the expected command
                 assert str(called_action).endswith(expected_module)
 
-    def test_webhook_secret_validation(self):
+    def test_webhook_secret_validation(self, telegram_secret_token_env):
         """Test that webhook secret validation works."""
         from lambdas.processor import handler
-        import os
 
-        # Set up test secret
-        os.environ["TELEGRAM_SECRET_TOKEN"] = "test-secret"
+        # telegram_secret_token_env fixture has set TELEGRAM_SECRET_TOKEN to "test-secret-token-for-pytest"
 
         # Test with correct secret
         event = {
-            "headers": {"x-telegram-bot-api-secret-token": "test-secret"},
+            "headers": {"x-telegram-bot-api-secret-token": telegram_secret_token_env},
             "body": {"message": {"text": "test", "chat": {"id": "123"}}},
         }
         # This will fail later but should pass secret validation
@@ -365,5 +389,65 @@ class TestProcessorHandler:
         assert result["body"] == "Forbidden"
 
 
-if __name__ == '__main__':
+class TestTelegramSecretTokenFixture:
+    """Test the telegram_secret_token_env fixture itself."""
+
+    def test_fixture_sets_env_var(self, telegram_secret_token_env):
+        """Test that the fixture sets the environment variable."""
+        assert os.environ.get("TELEGRAM_SECRET_TOKEN") == telegram_secret_token_env
+        assert telegram_secret_token_env == "test-secret-token-for-pytest"
+
+    def test_fixture_restores_none_when_not_set(self, monkeypatch):
+        """Test that the fixture restores None when the variable wasn't originally set."""
+        # Ensure the variable is not set
+        monkeypatch.delenv("TELEGRAM_SECRET_TOKEN", raising=False)
+
+        # Create a fresh fixture-like behavior
+        original_value = os.environ.get("TELEGRAM_SECRET_TOKEN")
+        assert original_value is None
+
+        # Set test value
+        test_value = "test-secret-token-for-pytest"
+        monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", test_value)
+
+        # Verify it's set
+        assert os.environ.get("TELEGRAM_SECRET_TOKEN") == test_value
+
+        # Simulate fixture cleanup
+        if original_value is not None:
+            monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", original_value)
+        else:
+            monkeypatch.delenv("TELEGRAM_SECRET_TOKEN", raising=False)
+
+        # Verify it's restored to None
+        assert os.environ.get("TELEGRAM_SECRET_TOKEN") is None
+
+    def test_fixture_restores_original_when_set(self, monkeypatch):
+        """Test that the fixture restores the original value when it was set."""
+        # Set an original value
+        original_test_value = "original-secret-token"
+        monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", original_test_value)
+
+        # Store original
+        original_value = os.environ.get("TELEGRAM_SECRET_TOKEN")
+        assert original_value == original_test_value
+
+        # Set test value
+        test_value = "test-secret-token-for-pytest"
+        monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", test_value)
+
+        # Verify it's set
+        assert os.environ.get("TELEGRAM_SECRET_TOKEN") == test_value
+
+        # Simulate fixture cleanup
+        if original_value is not None:
+            monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", original_value)
+        else:
+            monkeypatch.delenv("TELEGRAM_SECRET_TOKEN", raising=False)
+
+        # Verify it's restored to original
+        assert os.environ.get("TELEGRAM_SECRET_TOKEN") == original_test_value
+
+
+if __name__ == "__main__":
     unittest.main()
