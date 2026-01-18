@@ -9,7 +9,6 @@ repos:
         language: system
         types: [python]
         stages: [pre-commit]
-        files: ^(packages/common/src|packages/lambdas/src)/
 
       - id: ruff-lint
         name: Ruff lint
@@ -18,7 +17,6 @@ repos:
         language: system
         types: [python]
         stages: [pre-commit]
-        files: ^(packages/common/src|packages/lambdas/src)/
 
       - id: ty-check
         name: Ty type check
@@ -27,7 +25,6 @@ repos:
         language: system
         types: [python]
         stages: [pre-commit]
-        files: ^(packages/common/src|packages/lambdas/src)/
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
