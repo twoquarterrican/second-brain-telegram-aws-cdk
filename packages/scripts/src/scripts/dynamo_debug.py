@@ -78,9 +78,7 @@ def count():
 
         if category not in by_category_status:
             by_category_status[category] = {}
-        by_category_status[category][status] = (
-            by_category_status[category].get(status, 0) + 1
-        )
+        by_category_status[category][status] = by_category_status[category].get(status, 0) + 1
 
     click.echo("By status:")
     for status, count in sorted(by_status.items()):

@@ -2,7 +2,10 @@
 
 from typing import Mapping, Any
 from lambdas.digest import get_completed_items
-from lambdas.telegram.telegram_messages import send_telegram_message, TelegramWebhookEvent
+from lambdas.telegram.telegram_messages import (
+    send_telegram_message,
+    TelegramWebhookEvent,
+)
 
 
 def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:

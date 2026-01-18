@@ -3,8 +3,10 @@
 from typing import Mapping, Any
 
 from lambdas.adapter.out.persistence.dynamo_table import get_second_brain_table
-from lambdas.telegram.telegram_messages import send_telegram_message, TelegramWebhookEvent
-
+from lambdas.telegram.telegram_messages import (
+    send_telegram_message,
+    TelegramWebhookEvent,
+)
 
 
 def count_items(table):

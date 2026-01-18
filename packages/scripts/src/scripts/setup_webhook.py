@@ -120,7 +120,9 @@ def cli(ctx: click.Context):
 @cli.command(name="set")
 @click.option("--webhook-url", "-w", help="Webhook URL (auto-detected from CDK if not provided)")
 @click.option("--secret-token", "-s", help="Secret token (read from env if not provided)")
-@click.option("--auto-detect", "-a", is_flag=True, help="Auto-detect URL and proceed without prompts")
+@click.option(
+    "--auto-detect", "-a", is_flag=True, help="Auto-detect URL and proceed without prompts"
+)
 def set_cmd(webhook_url: Optional[str], secret_token: Optional[str], auto_detect: bool):
     """Set up Telegram webhook."""
     click.echo("🔧 Setting up Telegram webhook...")
@@ -249,7 +251,9 @@ def test_cmd():
         click.echo(f"   Name: {result.get('first_name', 'Unknown')}")
         click.echo(f"   Bot ID: {result.get('id', 'Unknown')}")
         click.echo(f"   Can join groups: {result.get('can_join_groups', False)}")
-        click.echo(f"   Can read group messages: {result.get('can_read_all_group_messages', False)}")
+        click.echo(
+            f"   Can read group messages: {result.get('can_read_all_group_messages', False)}"
+        )
     else:
         click.echo(f"❌ Failed to connect to bot: {result}", err=True)
         sys.exit(1)
@@ -341,9 +345,7 @@ def interactive_cmd():
         webhook_url = get_webhook_url_from_stack()
         if webhook_url:
             click.echo(f"🔍 Found webhook URL: {webhook_url}")
-            use_detected = inquirer.confirm(
-                message="Use this URL?", default=True
-            ).execute()
+            use_detected = inquirer.confirm(message="Use this URL?", default=True).execute()
             if not use_detected:
                 webhook_url = inquirer.text(
                     message="Enter webhook URL:",

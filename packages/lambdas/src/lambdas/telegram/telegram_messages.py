@@ -18,7 +18,9 @@ class TelegramChat(BaseModel):
 class TelegramMessage(BaseModel):
     """Telegram message structure."""
 
-    message_id: str = Field(..., min_length=8, max_length=8, description="Unique message identifier")
+    message_id: str = Field(
+        ..., min_length=8, max_length=8, description="Unique message identifier"
+    )
     text: Optional[str] = Field(None, description="Message text content")
     chat: TelegramChat = Field(..., description="Chat information")
 
@@ -27,6 +29,7 @@ class TelegramWebhookEvent(BaseModel):
     """Telegram webhook event structure."""
 
     message: Optional[TelegramMessage] = Field(None, description="Message data")
+
 
 def send_telegram_message(chat_id: str, text: str) -> bool:
     """Send message via Telegram bot API."""

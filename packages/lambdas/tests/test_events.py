@@ -342,7 +342,9 @@ class TestEventRepository:
 
 
 class TestProcessorHandler:
-    def test_non_command_message_dispatch(self, telegram_secret_token_env, anthropic_api_key_env):
+    def test_non_command_message_dispatch(
+        self, telegram_secret_token_env, anthropic_api_key_env
+    ):
         """Test that non-command messages are dispatched to the process action."""
         # Test the COMMAND_DISPATCH logic without actually calling the actions
         print(telegram_secret_token_env)

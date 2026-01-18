@@ -59,9 +59,7 @@ def _invoke_bedrock_with_retry(text: str, client) -> list[float]:
 
     embedding = payload.get("embedding") or payload.get("embeddings")
     if embedding is None:
-        raise ValueError(
-            f"Bedrock response missing embedding for text: {text[:50]}..."
-        )
+        raise ValueError(f"Bedrock response missing embedding for text: {text[:50]}...")
 
     return embedding
 
@@ -142,7 +140,7 @@ def embed_texts(texts: list[str], use_bedrock: bool = True) -> list[list[float]]
         try:
             return embed_bedrock_titan(texts)
         except Exception as e:
-            raise ValueError( "Bedrock Titan embedding failed" ) from e
+            raise ValueError("Bedrock Titan embedding failed") from e
 
     else:
         try:

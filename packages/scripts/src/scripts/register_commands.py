@@ -125,8 +125,7 @@ def register_cmd(token: Optional[str], all: bool):
         selected = inquirer.checkbox(
             message="Select commands to register:",
             choices=[
-                Choice(cmd, f"/{cmd.command} - {cmd.description}")
-                for cmd in AVAILABLE_COMMANDS
+                Choice(cmd, f"/{cmd.command} - {cmd.description}") for cmd in AVAILABLE_COMMANDS
             ],
             validate=lambda x: len(x) > 0,
             invalid_message="Select at least one command",

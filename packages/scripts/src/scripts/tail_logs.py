@@ -162,9 +162,7 @@ def tail(lambda_name: Optional[str], follow: bool, hours: float):
 
     if not log_streams:
         click.echo(f"ℹ️  No recent log streams found for {lambda_name}")
-        click.echo(
-            f"💡 Try running: uv run tail-logs --lambda-name {lambda_name} --hours 24"
-        )
+        click.echo(f"💡 Try running: uv run tail-logs --lambda-name {lambda_name} --hours 24")
         return
 
     click.echo(f"📂 Using log streams: {', '.join(log_streams[:3])}")

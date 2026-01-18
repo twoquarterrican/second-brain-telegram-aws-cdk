@@ -5,9 +5,11 @@ from datetime import datetime, timezone, timedelta
 from typing import Mapping, Any
 
 from lambdas.adapter.out.persistence.dynamo_table import get_second_brain_table
-from lambdas.telegram.telegram_messages import send_telegram_message, TelegramWebhookEvent
+from lambdas.telegram.telegram_messages import (
+    send_telegram_message,
+    TelegramWebhookEvent,
+)
 from common.environments import get_env
-
 
 
 def handle(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:

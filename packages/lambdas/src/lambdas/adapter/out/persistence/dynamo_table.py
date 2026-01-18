@@ -5,6 +5,7 @@ from common.environments import get_env
 @cache
 def get_dynamodb_resource():
     import boto3
+
     return boto3.resource("dynamodb")
 
 
