@@ -1,39 +1,124 @@
 #!/usr/bin/env python3
 """
-Logging utility with Telegram notification for critical errors.
+Structured logging utility with Telegram notification for critical errors.
 
 Usage:
-    from common.logging import log_error, log_warning
+    from common.logging import setup_logging, get_logger, log_error, log_warning, log_info
+
+Setup:
+    setup_logging()  # Configure structured JSON logging
+
+Logging:
+    logger = get_logger(__name__)
+    log_error("Database connection failed", cause="Timeout", user_id=123)
+    log_warning("High memory usage", memory_mb=850, threshold_mb=800)
+    log_info("User logged in", user_id=456, ip_address="192.168.1.1")
 
 Functions:
-    log_error(message, cause=None) - Log error and notify via Telegram
-    log_warning(message) - Log warning and notify via Telegram
+    setup_logging(level="INFO", format_type="json") - Configure structured logging
+    get_logger(name) - Get a structured logger instance
+    log_error(message, cause=None, **extra) - Log error with structured data & Telegram
+    log_warning(message, **extra) - Log warning with structured data & Telegram
+    log_info(message, **extra) - Log info with structured data
 """
-
-from typing import Optional
 
 import logging
 import os
+import sys
+from typing import Any, Optional
 
 import requests
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+try:
+    from pythonjsonlogger import jsonlogger
 
+    HAS_JSON_LOGGER = True
+except ImportError:
+    HAS_JSON_LOGGER = False
+
+# Service identification
+SERVICE_NAME = "second-brain"
+SERVICE_VERSION = "1.0.0"
+
+# Telegram configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("USER_CHAT_ID")
 
+# Global logger instance
+logger = logging.getLogger(SERVICE_NAME)
 
-def _send_telegram(message: str):
+
+def setup_logging(level: str = "INFO", format_type: str = "json"):
+    """
+    Configure structured logging.
+
+    Args:
+        level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        format_type: Log format - 'json' for structured logging, 'text' for human-readable
+    """
+    # Set log level
+    numeric_level = getattr(logging, level.upper(), logging.INFO)
+    logger.setLevel(numeric_level)
+
+    # Remove existing handlers
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    # Create formatter based on type
+    if format_type == "json" and HAS_JSON_LOGGER:
+        formatter = jsonlogger.JsonFormatter(
+            fmt="%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"
+        )
+    else:
+        formatter = logging.Formatter(
+            fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        )
+
+    # Console handler
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    return logger
+
+
+def get_logger(name: str) -> logging.Logger:
+    """
+    Get a structured logger instance.
+
+    Args:
+        name: Logger name (typically __name__)
+
+    Returns:
+        Configured logger instance
+    """
+    return logging.getLogger(f"{SERVICE_NAME}.{name}")
+
+
+# Export public API
+__all__ = [
+    "setup_logging",
+    "get_logger",
+    "log_error",
+    "log_warning",
+    "log_info",
+]
+
+
+def _send_telegram(message: str, level: str = "INFO"):
     """Send message to Telegram if configured."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return False
+
+    # Format message for Telegram
+    emoji = "❌" if level == "ERROR" else "⚠️" if level == "WARNING" else "ℹ️"
+    telegram_message = f"{emoji} {SERVICE_NAME}: {message}"
 
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         response = requests.post(
             url,
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": message},
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": telegram_message},
             timeout=10,
         )
         return response.status_code == 200
@@ -41,28 +126,71 @@ def _send_telegram(message: str):
         return False
 
 
-def log_error(message: str, cause: Optional[str] = None):
-    """Log error to CloudWatch and notify via Telegram.
+def log_error(message: str, cause: Optional[str] = None, **extra: Any):
+    """Log error with structured data and notify via Telegram.
 
     Args:
         message: Human-readable error message
         cause: Optional exception message or underlying cause
+        **extra: Additional structured data to include in log
     """
-    full_message = f"❌ {message}"
+    # Build structured log data
+    log_data = {
+        "level": "ERROR",
+    }
+
     if cause:
-        full_message += f"\n\nCause: {cause}"
+        log_data["cause"] = cause
 
-    logger.error(full_message)
-    _send_telegram(full_message)
+    # Add extra fields
+    log_data.update(extra)
+
+    # Log with structured data
+    logger.error(message, extra=log_data)
+
+    # Send Telegram notification
+    telegram_message = message
+    if cause:
+        telegram_message += f" - Cause: {cause}"
+    _send_telegram(telegram_message, "ERROR")
 
 
-def log_warning(message: str):
-    """Log warning to CloudWatch and notify via Telegram.
+def log_warning(message: str, **extra: Any):
+    """Log warning with structured data and notify via Telegram.
 
     Args:
         message: Human-readable warning message
+        **extra: Additional structured data to include in log
     """
-    full_message = f"⚠️ {message}"
+    # Build structured log data
+    log_data = {
+        "level": "WARNING",
+    }
 
-    logger.warning(full_message)
-    _send_telegram(full_message)
+    # Add extra fields
+    log_data.update(extra)
+
+    # Log with structured data
+    logger.warning(message, extra=log_data)
+
+    # Send Telegram notification
+    _send_telegram(message, "WARNING")
+
+
+def log_info(message: str, **extra: Any):
+    """Log info with structured data.
+
+    Args:
+        message: Human-readable info message
+        **extra: Additional structured data to include in log
+    """
+    # Build structured log data
+    log_data = {
+        "level": "INFO",
+    }
+
+    # Add extra fields
+    log_data.update(extra)
+
+    # Log with structured data
+    logger.info(message, extra=log_data)
