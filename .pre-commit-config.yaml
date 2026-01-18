@@ -2,6 +2,15 @@
 repos:
   - repo: local
     hooks:
+      - id: ruff-format
+        name: Ruff format
+        description: Run ruff formatter to auto-format Python code
+        entry: uv run ruff format
+        language: system
+        types: [python]
+        stages: [pre-commit]
+        files: ^(packages/common/src|packages/lambdas/src)/
+
       - id: ruff-lint
         name: Ruff lint
         description: Run ruff linter for import sorting and unused imports
