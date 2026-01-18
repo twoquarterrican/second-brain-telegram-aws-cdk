@@ -2,16 +2,17 @@
 Unit tests for the event repository using moto to mock DynamoDB.
 """
 
+import logging
 import os
-import sys
 import pytest
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from unittest import mock
 import boto3
 from moto import mock_aws
 from lambdas import processor
 from lambdas.actions import process
+from mock import Mock, patch
+from lambdas import app
 
 from lambdas.events import (
     EventRepository,
@@ -42,6 +43,18 @@ def create_test_repo():
     # Create client within the mock context
     dynamodb_client = boto3.client("dynamodb", region_name="us-east-1")
     return EventRepository("test-events", dynamodb_client)
+
+
+@pytest.fixture(autouse=True)
+def patch_api_calls():
+    with patch.object(  # type: ignore
+        app,
+        "app",
+    ) as mock_app:
+        mock_app.return_value.get_ai_model_api.return_value = Mock(
+            name="MockAiModelApi"
+        )
+        yield
 
 
 @pytest.fixture
@@ -347,7 +360,7 @@ class TestProcessorHandler:
     ):
         """Test that non-command messages are dispatched to the process action."""
         # Test the COMMAND_DISPATCH logic without actually calling the actions
-        print(telegram_secret_token_env)
+        logging.basicConfig(level=logging.INFO)
         response = processor.handler(
             {
                 "headers": {

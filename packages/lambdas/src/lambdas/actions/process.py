@@ -2,9 +2,9 @@
 
 import logging
 import json
-from anthropic.types import MessageParam
-from typing import Any, Dict, Optional, Mapping
+from typing import Any, Dict, Mapping
 from common.environments import get_env
+from lambdas.app import app
 
 # Import the event model
 from lambdas.telegram.telegram_messages import TelegramWebhookEvent
@@ -34,128 +34,24 @@ Return ONLY a JSON object with this structure:
 Message: {message}"""
 
 
-def classify_with_anthropic(message: str) -> Optional[Dict[str, Any]]:
-    """Classify message using Anthropic Claude."""
-    try:
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            messages=[
-                MessageParam(
-                    role="user",
-                    content=CLASSIFICATION_PROMPT.format(message=message),
-                ),
-            ],
-        )
-
-        content = response.content[0].text.strip()
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-
-        return json.loads(content)
-    except Exception as e:
-        logger.error(f"Anthropic classification failed: {e}", exc_info=e)
-        return None
-
-
-def classify_with_openai(message: str) -> Optional[Dict[str, Any]]:
-    """Classify message using OpenAI."""
-    try:
-        import openai
-
-        client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {
-                    "role": "user",
-                    "content": CLASSIFICATION_PROMPT.format(message=message),
-                }
-            ],
-            max_tokens=500,
-        )
-
-        content = response.choices[0].message.content.strip()
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-
-        return json.loads(content)
-    except Exception as e:
-        logger.error(f"OpenAI classification failed: {e}")
-        return None
-
-
-def classify_with_bedrock(message: str) -> Optional[Dict[str, Any]]:
-    """Classify message using AWS Bedrock."""
-    try:
-        import boto3
-        from botocore.config import Config
-
-        bedrock_config = {
-            "region_name": BEDROCK_REGION,
-            "config": Config(read_timeout=60, retries={"max_attempts": 3}),
-        }
-        bedrock = boto3.client("bedrock-runtime", **bedrock_config)
-
-        try:
-            response = bedrock.converse(
-                modelId="anthropic.claude-3-haiku-20240307-v1:0",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": CLASSIFICATION_PROMPT.format(message=message),
-                    }
-                ],
-                max_tokens=500,
-                temperature=0.1,
-                additional_model_request_fields={
-                    "throughput_config": {"throughput_mode": "provisioned"}
-                },
-            )
-        except Exception as provisioned_error:
-            logger.warning(
-                f"Provisioned throughput failed, trying on-demand: {provisioned_error}"
-            )
-            response = bedrock.converse(
-                modelId="anthropic.claude-3-haiku-20240307-v1:0",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": CLASSIFICATION_PROMPT.format(message=message),
-                    }
-                ],
-                max_tokens=500,
-                temperature=0.1,
-            )
-
-        content = response["output"]["message"]["content"]
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-
-        return json.loads(content)
-    except Exception as e:
-        logger.error(f"Bedrock classification failed: {e}", exc_info=e)
-        return None
-
-
-def process_message(message: str) -> Dict[str, Any]:
+def _classify(message: str) -> Dict[str, Any]:
     """Process and classify a message."""
-    result = None
-    if ANTHROPIC_API_KEY:
-        result = classify_with_anthropic(message)
-    if not result and OPENAI_API_KEY:
-        result = classify_with_openai(message)
-    if not result and BEDROCK_REGION:
-        result = classify_with_bedrock(message)
+    try:
+        content = (
+            app()
+            .get_ai_model_api()
+            .invoke_model(prompt=CLASSIFICATION_PROMPT.format(message=message))
+        )
+    except Exception as e:
+        raise Exception("AI classification attempt(s) failed") from e
 
-    if not result:
-        raise Exception("All AI classification attempts failed")
+    if content.startswith("```json"):
+        content = content[7:-3].strip()
+    else:
+        logger.error(f"AI classification failed - invalid response format: {content}")
+        raise Exception("AI classification failed - invalid response format")
 
+    result = json.loads(content)
     result["original_text"] = message
 
     confidence = result.get("confidence", 0)
@@ -170,7 +66,7 @@ def process_message(message: str) -> Dict[str, Any]:
     return result
 
 
-def handle(event_model: TelegramWebhookEvent, **_kwargs) -> Mapping[str, Any]:
+def handle(event_model: TelegramWebhookEvent) -> Mapping[str, Any]:
     """Process and classify a message, then save using embedding matching."""
     from lambdas.telegram.telegram_messages import send_telegram_message
     from lambdas.embedding_matcher import save_to_dynamodb_with_embedding
@@ -182,7 +78,7 @@ def handle(event_model: TelegramWebhookEvent, **_kwargs) -> Mapping[str, Any]:
 
     text = message.text
     chat_id = str(message.chat.id)
-    result = process_message(text)
+    result = _classify(text)
 
     if result["confidence"] >= 60:
         save_result = save_to_dynamodb_with_embedding(result)
@@ -214,8 +110,5 @@ def process(event_model: TelegramWebhookEvent, **kwargs) -> Mapping[str, Any]:
 __all__ = [
     "process",
     "handle",
-    "classify_with_anthropic",
-    "classify_with_openai",
-    "classify_with_bedrock",
-    "process_message",
+    "_classify",
 ]

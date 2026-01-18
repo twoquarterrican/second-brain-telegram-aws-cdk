@@ -13,6 +13,11 @@ Following hexagonal architecture principles:
 - Easy to test and configure different environments
 """
 
+from lambdas.adapter.out.ai import (
+    CompositeAiModelApi,
+    AnthropicModelApi,
+    BedrockModelApi,
+)
 from lambdas.app.port.out import AiModelApi
 
 
@@ -42,5 +47,16 @@ class Application:
         raise NotImplementedError("AiModelApi wiring not yet implemented")
 
 
+class DefaultApplication(Application):
+    """Default application instance with stubbed dependencies."""
+
+    def get_ai_model_api(self) -> AiModelApi:
+        return CompositeAiModelApi(
+            text_api=AnthropicModelApi(),
+            embedding_api=BedrockModelApi(),
+        )
+
+
 # Default application instance for convenience
-DEFAULT_APP = Application()
+def app() -> Application:
+    return DefaultApplication()

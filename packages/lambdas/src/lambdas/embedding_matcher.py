@@ -11,15 +11,11 @@ from decimal import Decimal
 from typing import Optional, Dict, Any
 import boto3
 
-from common.environments import get_vector_bucket_name, get_vector_index_name
-
-dynamodb = boto3.resource("dynamodb")
-s3vectors = boto3.client("s3vectors")
-
-table_name = os.environ.get("DDB_TABLE_NAME", "SecondBrain")
-vector_index_name = os.environ.get("S3_VECTOR_INDEX_NAME", "SecondBrainItemsIndex")
-
-table = dynamodb.Table(table_name)
+from common.environments import get_vector_bucket_name, get_vector_index_name, get_env
+from lambdas.adapter.out.persistence.dynamo_table import (
+    get_second_brain_table,
+    get_s3vectors_client,
+)
 
 
 def serialize_embedding(embedding: list[float]) -> list:
@@ -44,7 +40,7 @@ def embed_text(text: str) -> list[float]:
     if not text:
         return [0.0] * 1536
 
-    bedrock_region = os.environ.get("BEDROCK_REGION")
+    bedrock_region = get_env("BEDROCK_REGION", required=True)
 
     if bedrock_region:
         try:
@@ -100,8 +96,8 @@ def index_vector(
     """Index a vector in S3 Vectors."""
     vector_id = _make_vector_id(pk, sk)
 
-    s3vectors.batch_put_vector(
-        VectorIndexName=vector_index_name,
+    get_s3vectors_client().batch_put_vector(
+        VectorIndexName=get_vector_index_name(),
         Vectors=[
             {
                 "Id": vector_id,
@@ -123,8 +119,8 @@ def delete_vector(pk: str, sk: str) -> None:
     """Delete a vector from S3 Vectors."""
     vector_id = _make_vector_id(pk, sk)
 
-    s3vectors.batch_delete_vector(
-        VectorIndexName=vector_index_name,
+    get_s3vectors_client().batch_delete_vector(
+        VectorIndexName=get_vector_index_name(),
         VectorIds=[vector_id],
     )
 
@@ -145,7 +141,7 @@ def find_similar_item(
     Raises:
         ClientError: If S3 Vectors search fails
     """
-    response = s3vectors.query_vectors(
+    response = get_s3vectors_client().query_vectors(
         vectorBucketName=get_vector_bucket_name(),
         indexName=get_vector_index_name(),
         topK=5,
@@ -170,7 +166,7 @@ def find_similar_item(
         sk = metadata.get("sk")
 
         if pk and sk:
-            response = table.get_item(Key={"PK": pk, "SK": sk})
+            response = get_second_brain_table().get_item(Key={"PK": pk, "SK": sk})
             item = response.get("Item")
             if item:
                 return item
@@ -183,7 +179,7 @@ def update_item(
 ) -> None:
     """Update an existing item with new data."""
     timestamp = datetime.now(timezone.utc).isoformat()
-    table.update_item(
+    get_second_brain_table().update_item(
         Key={"PK": pk, "SK": sk},
         UpdateExpression="SET #status = :status, #next_action = :next_action, #notes = :notes, updated_at = :updated_at, original_text = :original_text",
         ExpressionAttributeNames={
@@ -223,7 +219,7 @@ def create_item(
         "embedding": serialize_embedding(embedding),
     }
 
-    table.put_item(Item=item)
+    get_second_brain_table().put_item(Item=item)
 
     index_vector(
         pk=str(item["PK"]),
